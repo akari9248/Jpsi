@@ -215,7 +215,7 @@ int main(int argc, char *argv[])
   {
     for (const auto &prefix_level: prefix_levels)
     {
-      hists.addHist(prefix_level + "_jpsi_pt" + ptname, 40, 0, 200);
+      hists.addHist(prefix_level + "_jpsi_pt" + ptname, 50, 0, 200);
       // hists.addHist(prefix_level + "_jpsi_lxy" + ptname, 40, 0, 400);
       hists.addHist(prefix_level + "_jpsi_mass" + ptname, 40, 2.9, 3.3);
       for (const auto &suffix_particle: suffix_particles)
@@ -227,21 +227,45 @@ int main(int argc, char *argv[])
       }
     }
   }
-  hists.addHist("genreco_jpsi_dr", 40, 0, 0.8);
-  hists.addHist("genreco_jpsi_dpt", 40, 0, 200);
 
+  std::map<TString, TH2D*> hist2d_map;
   std::vector<TH2D *> hists2ds;
-  TH2D *migration_matrix_jpsi_pt = new TH2D("migration_matrix_jpsi_pt", "migration_matrix_jpsi_pt", 40, 0, 200, 40, 0, 200);
-  hists2ds.push_back(migration_matrix_jpsi_pt);
 
-  for (const auto &suffix_particle: suffix_particles)
+  for (const auto &ptname: ptnames)
   {
-    hists.addHist("genreco_" + suffix_particle + "_particles_dr", 1000, 0, 0.8);
-    hists.addHist("genreco_" + suffix_particle + "_particles_dpt", 40, 0, 200);
-    hists2ds.push_back(new TH2D("migration_matrix_" + suffix_particle + "_particles_pt", "migration_matrix_" + suffix_particle + "_particles_pt", 40, 0, 200, 40, 0, 200));
-    hists2ds.push_back(new TH2D("migration_matrix_" + suffix_particle + "_particles_coschi", "migration_matrix_" + suffix_particle + "_particles_coschi", 20, -1, 1, 20, -1, 1));
-    hists2ds.push_back(new TH2D("migration_matrix_" + suffix_particle + "_particles_coschi_genjpsi", "migration_matrix_" + suffix_particle + "_particles_coschi_genjpsi", 20, -1, 1, 20, -1, 1));
-    hists2ds.push_back(new TH2D("migration_matrix_" + suffix_particle + "_particles_coschi_recojpsi", "migration_matrix_" + suffix_particle + "_particles_coschi_recojpsi", 20, -1, 1, 20, -1, 1));
+    hists.addHist("genreco_jpsi_dr" + ptname, 1000, 0, 0.8);
+    hists.addHist("genreco_jpsi_dpt" + ptname, 40, 0, 200);
+    
+    TString name_temp = "migration_matrix_jpsi_pt" + ptname;
+    TH2D *hist2d_temp = new TH2D(name_temp, name_temp, 50, 0, 200, 50, 0, 200);
+    hists2ds.push_back(hist2d_temp);
+    hist2d_map[name_temp] = hist2d_temp;
+    
+    for (const auto &suffix_particle: suffix_particles)
+    {
+      hists.addHist("genreco_" + suffix_particle + "_particles_dr" + ptname, 1000, 0, 0.8);
+      hists.addHist("genreco_" + suffix_particle + "_particles_dpt" + ptname, 40, 0, 200);
+      
+      TString name_pt = "migration_matrix_" + suffix_particle + "_particles_pt"  + ptname;
+      TH2D *hist_pt = new TH2D(name_pt, name_pt, 50, 0, 200, 50, 0, 200);
+      hists2ds.push_back(hist_pt);
+      hist2d_map[name_pt] = hist_pt;
+
+      TString name_coschi = "migration_matrix_" + suffix_particle + "_particles_coschi" + ptname;
+      TH2D* hist_coschi = new TH2D(name_coschi, name_coschi, 20, -1, 1, 20, -1, 1);
+      hists2ds.push_back(hist_coschi);
+      hist2d_map[name_coschi] = hist_coschi;
+
+      TString name_coschi_genjpsi = "migration_matrix_" + suffix_particle + "_particles_coschi_genjpsi" + ptname;
+      TH2D* hist_coschi_genjpsi = new TH2D(name_coschi_genjpsi, name_coschi_genjpsi, 20, -1, 1, 20, -1, 1);
+      hists2ds.push_back(hist_coschi_genjpsi);
+      hist2d_map[name_coschi_genjpsi] = hist_coschi_genjpsi;
+    
+      TString name_coschi_recojpsi = "migration_matrix_" + suffix_particle + "_particles_coschi_recojpsi" + ptname;
+      TH2D* hist_coschi_recojpsi = new TH2D(name_coschi_recojpsi, name_coschi_recojpsi, 20, -1, 1, 20, -1, 1);
+      hists2ds.push_back(hist_coschi_recojpsi);
+      hist2d_map[name_coschi_recojpsi] = hist_coschi_recojpsi;
+    }
   }
 
   auto SafeWritePart = [&](bool is_final = false) -> bool
@@ -363,9 +387,10 @@ int main(int argc, char *argv[])
       // Gen
       if (SampleType == "mc")
       {
+        
         for (int i = 0; i < tchain.cHadrons_Pt_slimmedGenJetsFlavourInfos->size(); i++)
         {
-          if (std::abs(tchain.cHadrons_PdgId_slimmedGenJetsFlavourInfos->at(i)) != 443)
+          if (std::abs(tchain.cHadrons_PdgId_slimmedGenJetsFlavourInfos->at(i)) == 443)
           {
             TLorentzVector jpsi_temp;
             jpsi_temp.SetPtEtaPhiE(tchain.cHadrons_Pt_slimmedGenJetsFlavourInfos->at(i), tchain.cHadrons_Eta_slimmedGenJetsFlavourInfos->at(i), 
@@ -373,6 +398,24 @@ int main(int argc, char *argv[])
             eventsinfo.at(0).jpsicandidates_tlz.push_back(jpsi_temp);
           }
         }
+	
+        /*
+        for (int i = 0; i < tchain.GenMuonPt->size(); i++)
+        {
+          for (int j = i + 1; j < tchain.GenMuonPt->size(); j++)
+          {
+            if ((tchain.GenMuonCharge->at(i) + tchain.GenMuonCharge->at(j)) != 0)
+              continue;
+            TLorentzVector muon1, muon2;
+            muon1.SetPtEtaPhiE(tchain.GenMuonPt->at(i), tchain.GenMuonEta->at(i), tchain.GenMuonPhi->at(i), tchain.GenMuonEnergy->at(i));
+            muon2.SetPtEtaPhiE(tchain.GenMuonPt->at(j), tchain.GenMuonEta->at(j), tchain.GenMuonPhi->at(j), tchain.GenMuonEnergy->at(j));
+            TLorentzVector dimuon = muon1 + muon2;
+            if (dimuon.M() < 2.9 || dimuon.M() > 3.3)
+              continue;
+            eventsinfo.at(0).jpsicandidates_tlz.push_back(dimuon);
+          }
+        }
+        */
       }
 
       // Matching
@@ -492,12 +535,16 @@ int main(int argc, char *argv[])
 
         // matching info
         // J/psi
+        int jpsiptbin = ptaxis->FindBin(eventsinfo.back().jpsi_tlz.Pt());
+        TString ptsuffix = ptnames.at(jpsiptbin);
         if (eventsinfo.back().jpsi_matched)
         {
           double jpsidr = eventsinfo.back().jpsi_tlz.DeltaR(eventsinfo.at(0).jpsi_tlz);
           double jpsidpt = std::abs(eventsinfo.back().jpsi_tlz.Pt() - eventsinfo.at(0).jpsi_tlz.Pt());
           hists["genreco_jpsi_dr"]->Fill(jpsidr, weight);
+          hists["genreco_jpsi_dr" + ptsuffix]->Fill(jpsidr, weight);
           hists["genreco_jpsi_dpt"]->Fill(jpsidpt, weight);
+          hists["genreco_jpsi_dpt" + ptsuffix]->Fill(jpsidpt, weight);
           hists2ds.at(0)->Fill(eventsinfo.at(0).jpsi_tlz.Pt(), eventsinfo.back().jpsi_tlz.Pt(), weight);
         }
         // particles
@@ -523,11 +570,11 @@ int main(int argc, char *argv[])
             hists["genreco_all_particles_dpt"]->Fill(particledpt, weight);
             hists["genreco_" + particletype + "_particles_dr"]->Fill(particledr, weight);
             hists["genreco_" + particletype + "_particles_dpt"]->Fill(particledpt, weight);   
-            hists2ds.at(1)->Fill(genjet.daughters.at(matchindex).Pt(), recojet.daughters.at(j).Pt(), weight);
-            if (particletype == "neutral")
-              hists2ds.at(5)->Fill(genjet.daughters.at(matchindex).Pt(), recojet.daughters.at(j).Pt(), weight);
-            else
-              hists2ds.at(9)->Fill(genjet.daughters.at(matchindex).Pt(), recojet.daughters.at(j).Pt(), weight);
+           
+            hist2d_map["migration_matrix_all_particles_pt"]->Fill(genjet.daughters.at(matchindex).Pt(), recojet.daughters.at(j).Pt(), weight);
+            hist2d_map["migration_matrix_all_particles_pt" + ptsuffix]->Fill(genjet.daughters.at(matchindex).Pt(), recojet.daughters.at(j).Pt(), weight);
+            hist2d_map["migration_matrix_" + particletype + "_particles_pt"]->Fill(genjet.daughters.at(matchindex).Pt(), recojet.daughters.at(j).Pt(), weight);
+            hist2d_map["migration_matrix_" + particletype + "_particles_pt" + ptsuffix]->Fill(genjet.daughters.at(matchindex).Pt(), recojet.daughters.at(j).Pt(), weight);
           }
         }
       }
@@ -580,11 +627,10 @@ int main(int argc, char *argv[])
             TLorentzVector gendau = eventsinfo.at(0).jets.at(jetmatchindex).daughters.at(daumatchindex);
             gendau.Boost(boostvector);
             double gencoschi_recojpsi = gendau.Vect().Dot(eventsinfo.back().jpsi_tlz.Vect()) * 1.0 / gendau.Vect().Mag() / eventsinfo.back().jpsi_tlz.Vect().Mag();
-            hists2ds.at(4)->Fill(gencoschi_recojpsi, coschi, weight);
-            if (particletype == "neutral")
-              hists2ds.at(8)->Fill(gencoschi_recojpsi, coschi, weight);
-            else if (particletype == "charge")
-              hists2ds.at(12)->Fill(gencoschi_recojpsi, coschi, weight);
+            hist2d_map["migration_matrix_all_particles_coschi"]->Fill(gencoschi_recojpsi, coschi, weight);
+            hist2d_map["migration_matrix_all_particles_coschi" + ptsuffix]->Fill(gencoschi_recojpsi, coschi, weight);
+            hist2d_map["migration_matrix_" + particletype + "_particles_coschi"]->Fill(gencoschi_recojpsi, coschi, weight);
+            hist2d_map["migration_matrix_" + particletype + "_particles_coschi" + ptsuffix]->Fill(gencoschi_recojpsi, coschi, weight);
 
             if (eventsinfo.at(0).jpsicandidates_tlz.size() == 0) continue;
             TVector3 genboostvector = - (eventsinfo.at(0).jpsi_tlz.BoostVector());
@@ -594,60 +640,57 @@ int main(int argc, char *argv[])
             gendau2.Boost(genboostvector);
             double coschi_genjpsi = dau2.Vect().Dot(eventsinfo.at(0).jpsi_tlz.Vect()) * 1.0 / dau2.Vect().Mag() / eventsinfo.at(0).jpsi_tlz.Vect().Mag();
             double gencoschi_genjpsi = gendau2.Vect().Dot(eventsinfo.at(0).jpsi_tlz.Vect()) * 1.0 / gendau2.Vect().Mag() / eventsinfo.at(0).jpsi_tlz.Vect().Mag();
-            hists2ds.at(2)->Fill(coschi, gencoschi_genjpsi, weight);
-            hists2ds.at(3)->Fill(coschi_genjpsi, gencoschi_genjpsi, weight);
-            if (particletype == "neutral")
-            {
-              hists2ds.at(6)->Fill(coschi, gencoschi_genjpsi, weight);
-              hists2ds.at(7)->Fill(coschi_genjpsi, gencoschi_genjpsi, weight);
-            }
-            else if (particletype == "charge")
-            {
-              hists2ds.at(10)->Fill(coschi, gencoschi_genjpsi, weight);
-              hists2ds.at(11)->Fill(coschi_genjpsi, gencoschi_genjpsi, weight);
-            }
+            hist2d_map["migration_matrix_all_particles_coschi_genjpsi"]->Fill(gencoschi_genjpsi, coschi_genjpsi, weight);
+            hist2d_map["migration_matrix_all_particles_coschi_genjpsi" + ptsuffix]->Fill(gencoschi_genjpsi, coschi_genjpsi, weight);
+            hist2d_map["migration_matrix_" + particletype + "_particles_coschi_genjpsi"]->Fill(gencoschi_genjpsi, coschi_genjpsi, weight);
+            hist2d_map["migration_matrix_" + particletype + "_particles_coschi_genjpsi" + ptsuffix]->Fill(gencoschi_genjpsi, coschi_genjpsi, weight);
+            hist2d_map["migration_matrix_all_particles_coschi_recojpsi"]->Fill(gencoschi_recojpsi, coschi, weight); 
+            hist2d_map["migration_matrix_all_particles_coschi_recojpsi" + ptsuffix]->Fill(gencoschi_recojpsi, coschi, weight);
+            hist2d_map["migration_matrix_" + particletype + "_particles_coschi_recojpsi"]->Fill(gencoschi_recojpsi, coschi, weight);
+            hist2d_map["migration_matrix_" + particletype + "_particles_coschi_recojpsi" + ptsuffix]->Fill(gencoschi_recojpsi, coschi, weight);
           }
         }
       }
 
       if (SampleType == "mc")
       {
-        if (eventsinfo.at(0).jpsicandidates_tlz.size() == 0)
-          continue;
-        int gen_jpsiptbin = ptaxis->FindBin(eventsinfo.at(0).jpsi_tlz.Pt());
-        TString gen_ptsuffix = ptnames.at(gen_jpsiptbin);
-        hists["Gen_jpsi_mass"]->Fill(eventsinfo.at(0).jpsi_tlz.M(), weight);
-        hists["Gen_jpsi_mass" + gen_ptsuffix]->Fill(eventsinfo.at(0).jpsi_tlz.M(), weight);
-        hists["Gen_jpsi_pt"]->Fill(eventsinfo.at(0).jpsi_tlz.Pt(), weight);
-        hists["Gen_jpsi_pt" + gen_ptsuffix]->Fill(eventsinfo.at(0).jpsi_tlz.Pt(), weight);
-        TVector3 gen_boostvector = -(eventsinfo.at(0).jpsi_tlz.BoostVector());
-        for (int i = 0; i < eventsinfo.at(0).jets.size(); i++)
+        if (eventsinfo.at(0).jpsicandidates_tlz.size() != 0)
         {
-          for (int j = 0; j < eventsinfo.at(0).jets.at(i).daughters.size(); j++)
+          int gen_jpsiptbin = ptaxis->FindBin(eventsinfo.at(0).jpsi_tlz.Pt());
+          TString gen_ptsuffix = ptnames.at(gen_jpsiptbin);
+          hists["Gen_jpsi_mass"]->Fill(eventsinfo.at(0).jpsi_tlz.M(), weight);
+          hists["Gen_jpsi_mass" + gen_ptsuffix]->Fill(eventsinfo.at(0).jpsi_tlz.M(), weight);
+          hists["Gen_jpsi_pt"]->Fill(eventsinfo.at(0).jpsi_tlz.Pt(), weight);
+          hists["Gen_jpsi_pt" + gen_ptsuffix]->Fill(eventsinfo.at(0).jpsi_tlz.Pt(), weight);
+          TVector3 gen_boostvector = -(eventsinfo.at(0).jpsi_tlz.BoostVector());
+          for (int i = 0; i < eventsinfo.at(0).jets.size(); i++)
           {
-            TString gen_particletype = "";
-            if (tchain.GenDaughterCharge->at(eventsinfo.at(0).jets.at(i).daughterindexs.at(j)) == 0)
-              gen_particletype = "neutral";
-            else
-              gen_particletype = "charge";
-            TLorentzVector gen_dau = eventsinfo.at(0).jets.at(i).daughters.at(j);
-            gen_dau.Boost(gen_boostvector);
-            double gen_coschi = gen_dau.Vect().Dot(eventsinfo.at(0).jpsi_tlz.Vect()) * 1.0 / gen_dau.Vect().Mag() / eventsinfo.at(0).jpsi_tlz.Vect().Mag();
-            double gen_ec = gen_dau.E() / eventsinfo.at(0).jpsi_tlz.M();
-            TString gen_matchtype = "";
-            if (eventsinfo.at(0).jets.at(i).jetmatchindex >= 0 && eventsinfo.at(0).jets.at(i).daughtermatchindexs.at(j) >= 0)
-              gen_matchtype = "matched";
-            else
-              gen_matchtype = "unmatched";
+            for (int j = 0; j < eventsinfo.at(0).jets.at(i).daughters.size(); j++)
+            {
+              TString gen_particletype = "";
+              if (tchain.GenDaughterCharge->at(eventsinfo.at(0).jets.at(i).daughterindexs.at(j)) == 0)
+                gen_particletype = "neutral";
+              else
+                gen_particletype = "charge";
+              TLorentzVector gen_dau = eventsinfo.at(0).jets.at(i).daughters.at(j);
+              gen_dau.Boost(gen_boostvector);
+              double gen_coschi = gen_dau.Vect().Dot(eventsinfo.at(0).jpsi_tlz.Vect()) * 1.0 / gen_dau.Vect().Mag() / eventsinfo.at(0).jpsi_tlz.Vect().Mag();
+              double gen_ec = gen_dau.E() / eventsinfo.at(0).jpsi_tlz.M();
+              TString gen_matchtype = "";
+              if (eventsinfo.at(0).jets.at(i).jetmatchindex >= 0 && eventsinfo.at(0).jets.at(i).daughtermatchindexs.at(j) >= 0)
+                gen_matchtype = "matched";
+              else
+                gen_matchtype = "unmatched";
 
-            hists["Gen_coschi_alljet_all_all"]->Fill(gen_coschi, gen_ec * weight);
-            hists["Gen_coschi_alljet_all_all" + gen_ptsuffix]->Fill(gen_coschi, gen_ec * weight);
-            hists["Gen_coschi_alljet_" + gen_particletype + "_all"]->Fill(gen_coschi, gen_ec * weight);
-            hists["Gen_coschi_alljet_" + gen_particletype + "_all" + gen_ptsuffix]->Fill(gen_coschi, gen_ec * weight);
-            hists["Gen_coschi_alljet_all_" + gen_matchtype]->Fill(gen_coschi, gen_ec * weight);
-            hists["Gen_coschi_alljet_all_" + gen_matchtype + gen_ptsuffix]->Fill(gen_coschi, gen_ec * weight);
-            hists["Gen_coschi_alljet_" + gen_particletype + "_" + gen_matchtype]->Fill(gen_coschi, gen_ec * weight);
-            hists["Gen_coschi_alljet_" + gen_particletype + "_" + gen_matchtype + gen_ptsuffix]->Fill(gen_coschi, gen_ec * weight);
+              hists["Gen_coschi_alljet_all_all"]->Fill(gen_coschi, gen_ec * weight);
+              hists["Gen_coschi_alljet_all_all" + gen_ptsuffix]->Fill(gen_coschi, gen_ec * weight);
+              hists["Gen_coschi_alljet_" + gen_particletype + "_all"]->Fill(gen_coschi, gen_ec * weight);
+              hists["Gen_coschi_alljet_" + gen_particletype + "_all" + gen_ptsuffix]->Fill(gen_coschi, gen_ec * weight);
+              hists["Gen_coschi_alljet_all_" + gen_matchtype]->Fill(gen_coschi, gen_ec * weight);
+              hists["Gen_coschi_alljet_all_" + gen_matchtype + gen_ptsuffix]->Fill(gen_coschi, gen_ec * weight);
+              hists["Gen_coschi_alljet_" + gen_particletype + "_" + gen_matchtype]->Fill(gen_coschi, gen_ec * weight);
+              hists["Gen_coschi_alljet_" + gen_particletype + "_" + gen_matchtype + gen_ptsuffix]->Fill(gen_coschi, gen_ec * weight);
+            }
           }
         }
       }
