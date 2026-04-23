@@ -67,6 +67,15 @@ TLorentzVector createTLVFromPseudoJet(const fastjet::PseudoJet &subjet)
   return tlv;
 };
 
+bool isSameParticle(const TLorentzVector& v1, const TLorentzVector& v2, double drCut = 1e-4, double relEut = 1e-4) 
+{
+  if (v1.DeltaR(v2) > drCut) return false;
+  double relDiffE = std::abs(v1.E() - v2.E()) / (v1.E() + 1e-9);
+  if (relDiffE > relEut) return false;
+
+  return true;
+}
+
 void processJets(const std::vector<double>& jetPt, const std::vector<double>& jetEta,
                  const std::vector<double>& jetPhi, const std::vector<double>& jetEnergy,
                  const std::vector<double>& daughterPt, const std::vector<double>& daughterEta,
@@ -355,6 +364,7 @@ int main(int argc, char *argv[])
       // jpsi info
       // Reco
       double dimuonmass_var = 999.;
+      std::vector<TLorentzVector> recomuons;
       for (int i = 0; i < tchain.RecoDiMuonMass->size(); i++)
       {
         if (tchain.RecoDiMuonMass->at(i) < 2.9 || tchain.RecoDiMuonMass->at(i) > 3.3)
@@ -365,6 +375,9 @@ int main(int argc, char *argv[])
         if (tchain.RecoMuonSoftID->at(daughter1) == false || tchain.RecoMuonSoftID->at(daughter2) == false)
           continue;
         
+        TLorentzVector muon1, muon2;
+        muon1.SetPtEtaPhiE(tchain.RecoMuonPt->at(daughter1), tchain.RecoMuonPhi->at(daughter1), tchain.RecoMuonEta->at(daughter1), tchain.RecoMuonEnergy->at(daughter1));
+        muon2.SetPtEtaPhiE(tchain.RecoMuonPt->at(daughter2), tchain.RecoMuonPhi->at(daughter2), tchain.RecoMuonEta->at(daughter2), tchain.RecoMuonEnergy->at(daughter2));
         /*
         if (tchain.RecoDiMuonvProb->at(i) < 0.01)
           continue;
@@ -383,9 +396,22 @@ int main(int argc, char *argv[])
         {
           dimuonmass_var = std::abs(tchain.RecoDiMuonMass->at(i) - 3.1);
           eventsinfo.back().jpsi_tlz = jpsi_temp;
+          recomuons.clear();
+          if (tchain.RecoMuonCharge->at(daughter1) > 0)
+          {
+            recomuons.push_back(muon1);
+            recomuons.push_back(muon2);
+          }
+          else
+          {
+            recomuons.push_back(muon2);
+            recomuons.push_back(muon1);
+          }
         }
       }
       // Gen
+      std::vector<std::vector<TLorentzVector>> genmuons_candidate;
+      std::vector<TLorentzVector> genmuons;
       if (SampleType == "mc")
       {
         /*
@@ -413,6 +439,18 @@ int main(int argc, char *argv[])
             if (dimuon.M() < 2.9 || dimuon.M() > 3.3)
               continue;
             eventsinfo.at(0).jpsicandidates_tlz.push_back(dimuon);
+            std::vector<TLorentzVector> genmuons_temp;
+            if (tchain.GenMuonCharge->at(i) > 0)
+            {
+              genmuons_temp.push_back(muon1);
+              genmuons_temp.push_back(muon2);
+            }
+            else
+            {
+              genmuons_temp.push_back(muon2);
+              genmuons_temp.push_back(muon1);
+            }
+            genmuons_candidate.push_back(genmuons_temp);
           }
         }
       }
@@ -436,12 +474,26 @@ int main(int argc, char *argv[])
         double drmin = 999.;
         for (int i = 0; i < eventsinfo.at(0).jpsicandidates_tlz.size(); i++)
         {
+          /*
+          double dr_reco = recomuons.at(0).DeltaR(recomuons.at(1));
+          std::vector<TLorentzVector> genmuons_temp = genmuons_candidate.at(i);
+          double dr_genreco00 = recomuons.at(0).DeltaR(genmuons_temp.at(0));
+          double dr_genreco11 = recomuons.at(1).DeltaR(genmuons_temp.at(1));
+          if (dr_genreco00 < dr_reco * 0.5 && dr_genreco11 < dr_reco * 0.5)
+          {
+            eventsinfo.at(0).jpsi_tlz = eventsinfo.at(0).jpsicandidates_tlz.at(i);
+            eventsinfo.back().jpsi_matched = true;
+            genmuons = genmuons_temp;
+          }
+          */
           double dr = eventsinfo.at(0).jpsicandidates_tlz.at(i).DeltaR(eventsinfo.back().jpsi_tlz);
+          std::vector<TLorentzVector> genmuons_temp = genmuons_candidate.at(i);
           if (dr < drmin)
           {
             drmin = dr;
             eventsinfo.at(0).jpsi_tlz = eventsinfo.at(0).jpsicandidates_tlz.at(i);
             eventsinfo.back().jpsi_matched = true;
+            genmuons = genmuons_temp;
           }
         }
         // gen-reco jet
@@ -600,6 +652,9 @@ int main(int argc, char *argv[])
             particletype = "charge";
 
           TLorentzVector dau = eventsinfo.back().jets.at(i).daughters.at(j);
+          // remove muon from j/psi
+          if (isSameParticle(recomuons.at(0), dau) || isSameParticle(recomuons.at(1), dau))
+            continue;
           dau.Boost(boostvector);
           double coschi = dau.Vect().Dot(eventsinfo.back().jpsi_tlz.Vect()) * 1.0 / dau.Vect().Mag() / eventsinfo.back().jpsi_tlz.Vect().Mag();
           double ec = dau.E() / eventsinfo.back().jpsi_tlz.M();
@@ -658,7 +713,7 @@ int main(int argc, char *argv[])
 
       if (SampleType == "mc")
       {
-        if (eventsinfo.at(0).jpsicandidates_tlz.size() != 0)
+        if (eventsinfo.back().jpsi_matched)
         {
           int gen_jpsiptbin = ptaxis->FindBin(eventsinfo.at(0).jpsi_tlz.Pt());
           TString gen_ptsuffix = ptnames.at(gen_jpsiptbin);
@@ -677,6 +732,8 @@ int main(int argc, char *argv[])
               else
                 gen_particletype = "charge";
               TLorentzVector gen_dau = eventsinfo.at(0).jets.at(i).daughters.at(j);
+              if (isSameParticle(genmuons.at(0), gen_dau) || isSameParticle(genmuons.at(1), gen_dau))
+                continue;
               gen_dau.Boost(gen_boostvector);
               double gen_coschi = gen_dau.Vect().Dot(eventsinfo.at(0).jpsi_tlz.Vect()) * 1.0 / gen_dau.Vect().Mag() / eventsinfo.at(0).jpsi_tlz.Vect().Mag();
               double gen_ec = gen_dau.E() / eventsinfo.at(0).jpsi_tlz.M();
