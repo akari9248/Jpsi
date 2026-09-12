@@ -1,180 +1,259 @@
 #!/bin/bash
-# submit_and_merge.sh
-# Compile, submit condor jobs, and generate merge script
+set -euo pipefail
 
-source /cvmfs/cms.cern.ch/cmsset_default.sh
-eval `scramv1 runtime -sh`
-
-# Configuration
-INPUT_BASE="/eos/cms/store/group/phys_smp/ec/shuangyu/2024datasets/AK8"
-OUTPUT_BASE="/eos/user/s/shuangyu/public/Jpsi/AK8"
-CODENAME="eec"
-CHUNKS=50
-MEMORY=4096
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CMSSW_PATH="${CMSSW_BASE:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+MODE="cms"
+INPUT_BASE=""
+OUTPUT_DIR=""
+CHUNKS=100
+RADIUS=0.4
+JET_PT_MIN=30
+JET_ETA_MAX=5
+MUON_LEADING_PT=4
+MUON_SUBLEADING_PT=3
+MASS_MIN=2.9
+MASS_MAX=3.3
+CONSTITUENT_SCALING="on"
+LEVEL="both"
+CMS_FILTERS="on"
+HOT_ZONE="on"
+PROMPT="on"
 FLAVOUR="microcentury"
+AUTO_SUBMIT=0
+DATASETS=()
+EVENTS=500
+SEED_START=100000000
+ONIASHOWER="off"
+CRMODE=0
+JOBTAG="private_pythia"
 
-# Dataset list - modify as needed
-DATASETS=(
-    # "JetMET0_Run2024C-MINIv6NANOv15"
-    # "JetMET0_Run2024D-MINIv6NANOv15"
-    # "JetMET0_Run2024E-MINIv6NANOv15"
-    # "JetMET0_Run2024F-MINIv6NANOv15"
-    # "JetMET0_Run2024G-MINIv6NANOv15"
-    # "JetMET0_Run2024H-MINIv6NANOv15"
-    # "ParkingDoubleMuonLowMass0_Run2024G-MINIv6NANOv15"
-    # "ParkingDoubleMuonLowMass1_Run2024G-MINIv6NANOv15"
-    # "ParkingDoubleMuonLowMass2_Run2024G-MINIv6NANOv15"
-    # "ParkingDoubleMuonLowMass3_Run2024G-MINIv6NANOv15"
-    # "ParkingDoubleMuonLowMass4_Run2024G-MINIv6NANOv15"
-    # "ParkingDoubleMuonLowMass5_Run2024G-MINIv6NANOv15"
-    # "ParkingDoubleMuonLowMass6_Run2024G-MINIv6NANOv15"
-    # "ParkingDoubleMuonLowMass7_Run2024G-MINIv6NANOv15"
-    # "Jpsito2Mu_Bin-PTJpsi-8_TuneCP5_13p6TeV_pythia8-RunIIISummer24"
-    "QCD_Bin-PT-600to800_pythia8-RunIIISummer24"
-    # "QCD_Bin-PT-15to7000_flat2022_pythia8-RunIIISummer24"
-    # "QCD_Bin-PT-15to7000_Par-PT-Flat_TuneCH3_13p6TeV_herwig7"
-)
+usage() {
+    cat <<USAGE
+Usage: $0 --mode generate|private|cms [options]
 
-# Create the executable script for condor jobs
-cat > run_job.sh << 'EOF'
-#!/bin/bash
-# Condor executable script: sets up environment, compiles, and runs
+  --input-base DIR       Parent directory containing datasets
+  --output-dir DIR       Destination for ROOT files
+  --dataset NAME         Dataset subdirectory; may be repeated
+  --chunks N             Number of Condor jobs per dataset (default: 100)
+  --radius R             Common anti-kT/association radius (default: 0.4)
+  --jet-pt-min X         Common selected-jet threshold (default: 30)
+  --jet-eta-max X        Common selected-jet acceptance (default: 5)
+  --muon-leading-pt X    Common leading-muon threshold (default: 4)
+  --muon-subleading-pt X Common subleading-muon threshold (default: 3)
+  --mass-min X           Dimuon mass-window lower edge (default: 2.9)
+  --mass-max X           Dimuon mass-window upper edge (default: 3.3)
+  --constituent-scaling on|off
+  --level gen|reco|both  CMS mode only (default: both)
+  --cms-filters on|off   CMS trigger and MET filters (default: on)
+  --hot-zone on|off      CMS reco hot-zone filter (default: on)
+  --prompt on|off        CMS prompt-J/psi selection (default: on)
+  --flavour NAME         HTCondor JobFlavour
+  --cmssw DIR            CMSSW release directory
+  --submit               Submit; otherwise only generate .sub files
 
-# Parse arguments
+Generation-only options:
+  --events N             Accepted J/psi events per job (default: 500)
+  --seed-start N         First deterministic Pythia seed (default: 100000000)
+  --oniashower on|off    Pythia OniaShower setting (default: off)
+  --crmode 0|1           Pythia colour-reconnection mode (default: 0)
+  --jobtag NAME          Name used for the generated submit file
+USAGE
+}
+
 while [[ $# -gt 0 ]]; do
-    case $1 in
-        -i|--input) INPUT_PATH="$2"; shift 2 ;;
-        -o|--output) OUTPUT_BASE="$2"; shift 2 ;;
-        -n|--chunks) TOTAL_CHUNKS="$2"; shift 2 ;;
-        -e|--chunk-id) CHUNK_ID="$2"; shift 2 ;;
-        *) shift ;;
+    case "$1" in
+        --mode) MODE="$2"; shift 2 ;;
+        --input-base) INPUT_BASE="$2"; shift 2 ;;
+        --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+        --dataset) DATASETS+=("$2"); shift 2 ;;
+        --chunks) CHUNKS="$2"; shift 2 ;;
+        --radius) RADIUS="$2"; shift 2 ;;
+        --jet-pt-min) JET_PT_MIN="$2"; shift 2 ;;
+        --jet-eta-max) JET_ETA_MAX="$2"; shift 2 ;;
+        --muon-leading-pt) MUON_LEADING_PT="$2"; shift 2 ;;
+        --muon-subleading-pt) MUON_SUBLEADING_PT="$2"; shift 2 ;;
+        --mass-min) MASS_MIN="$2"; shift 2 ;;
+        --mass-max) MASS_MAX="$2"; shift 2 ;;
+        --constituent-scaling) CONSTITUENT_SCALING="$2"; shift 2 ;;
+        --level) LEVEL="$2"; shift 2 ;;
+        --cms-filters) CMS_FILTERS="$2"; shift 2 ;;
+        --hot-zone) HOT_ZONE="$2"; shift 2 ;;
+        --prompt) PROMPT="$2"; shift 2 ;;
+        --flavour) FLAVOUR="$2"; shift 2 ;;
+        --cmssw) CMSSW_PATH="$2"; shift 2 ;;
+        --events) EVENTS="$2"; shift 2 ;;
+        --seed-start) SEED_START="$2"; shift 2 ;;
+        --oniashower) ONIASHOWER="$2"; shift 2 ;;
+        --crmode) CRMODE="$2"; shift 2 ;;
+        --jobtag) JOBTAG="$2"; shift 2 ;;
+        --submit) AUTO_SUBMIT=1; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
     esac
 done
 
-# Set up CMS environment
-source /cvmfs/cms.cern.ch/cmsset_default.sh
-eval `scramv1 runtime -sh`
+if [[ "${MODE}" != "cms" && "${MODE}" != "private" && \
+      "${MODE}" != "generate" ]]; then
+    echo "ERROR: mode must be cms, private, or generate" >&2
+    exit 1
+fi
 
-# Compile
-CODENAME="eec"
-g++ ${CODENAME}.cpp -o ${CODENAME} $(root-config --cflags --glibs) \
-  -I/cvmfs/cms.cern.ch/el9_amd64_gcc12/external/fastjet/3.4.1-71044756ca7b67339b95a884df339811/include \
-  -I/cvmfs/cms.cern.ch/el9_amd64_gcc12/external/fastjet-contrib/1.051-6b2cbf7b2399385490e165663710d5e0/include \
-  -I/cvmfs/cms.cern.ch/el9_amd64_gcc12/external/fastjet-contrib/1.051-6b2cbf7b2399385490e165663710d5e0 \
-  -L/cvmfs/cms.cern.ch/el9_amd64_gcc12/external/fastjet/3.4.1-71044756ca7b67339b95a884df339811/lib \
-  -L/cvmfs/cms.cern.ch/el9_amd64_gcc12/external/fastjet-contrib/1.051-6b2cbf7b2399385490e165663710d5e0/lib \
-  -lfastjet -lfastjetplugins -lfastjettools -lsiscone -lsiscone_spherical \
-  -lfastjetcontribfragile
+# Compile once on the submit host. Batch workers use this prebuilt binary and
+# therefore do not depend on SCRAM being able to initialize inside the slot.
+echo "Building ${MODE} executable before creating Condor jobs"
+"${SCRIPT_DIR}/compile.sh" --cmssw "${CMSSW_PATH}" --target "${MODE}" \
+    --output-dir "${SCRIPT_DIR}/bin"
 
-# Run the executable
-./${CODENAME} -i "${INPUT_PATH}" -o "${OUTPUT_BASE}" -n ${TOTAL_CHUNKS} -e ${CHUNK_ID}
-EOF
+PYTHIA8_DATA=""
+LHAPDF_LIB=""
+LHAPDF_DATA=""
+if [[ "${MODE}" == "generate" ]]; then
+    PYTHIA8_BASE="$(
+        # shellcheck source=/dev/null
+        source /cvmfs/cms.cern.ch/cmsset_default.sh
+        cd "${CMSSW_PATH}/src"
+        scram tool info pythia8 | awk -F= '/^PYTHIA8_BASE=/{print $2; exit}'
+    )"
+    LHAPDF_BASE="$(
+        # shellcheck source=/dev/null
+        source /cvmfs/cms.cern.ch/cmsset_default.sh
+        cd "${CMSSW_PATH}/src"
+        scram tool info lhapdf | awk -F= '/^LHAPDF_BASE=/{print $2; exit}'
+    )"
+    PYTHIA8_DATA="${PYTHIA8_BASE}/share/Pythia8/xmldoc"
+    LHAPDF_LIB="${LHAPDF_BASE}/lib"
+    LHAPDF_DATA="${LHAPDF_BASE}/share/LHAPDF"
+    if [[ ! -f "${PYTHIA8_DATA}/Index.xml" || ! -d "${LHAPDF_LIB}" || \
+          ! -d "${LHAPDF_DATA}" ]]; then
+        echo "ERROR: failed to resolve Pythia/LHAPDF runtime paths" >&2
+        exit 1
+    fi
+fi
 
-chmod +x run_job.sh
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+GENERATED_DIR="${SCRIPT_DIR}/generated/${MODE}_${TIMESTAMP}"
+LOG_DIR="${GENERATED_DIR}/logs"
 
-# Create directories
-mkdir -p logs
-mkdir -p ${OUTPUT_BASE}
+if [[ "${MODE}" == "generate" ]]; then
+    OUTPUT_DIR="${OUTPUT_DIR:-/eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Unified}"
+    mkdir -p "${LOG_DIR}" "${OUTPUT_DIR}"
+    submit_file="${GENERATED_DIR}/${JOBTAG}.sub"
 
-# Submit jobs
-echo "Submitting ${#DATASETS[@]} datasets with ${CHUNKS} chunks each"
-
-for DATASET in "${DATASETS[@]}"; do
-    INPUT_PATH="${INPUT_BASE}/${DATASET}"
-    
-    condor_submit << EOF
+    cat > "${submit_file}" <<SUBMIT
 universe = vanilla
-executable = run_job.sh
 getenv = True
-arguments = -i ${INPUT_PATH} -o ${OUTPUT_BASE}/${DATASET} -n ${CHUNKS} -e \$(Process)
-transfer_input_files = eec.cpp, run_job.sh, include
-output = logs/${DATASET}_\$(Process).out
-error = logs/${DATASET}_\$(Process).err
-log = logs/${DATASET}.log
-should_transfer_files = YES
-when_to_transfer_output = ON_EXIT
+executable = ${SCRIPT_DIR}/run_job.sh
+transfer_executable = False
+arguments = --mode generate --output ${OUTPUT_DIR} --chunk-id \$(Chunk) --seed \$(Seed) --events ${EVENTS} --oniashower ${ONIASHOWER} --crmode ${CRMODE} --cmssw ${CMSSW_PATH} --source-dir ${SCRIPT_DIR} --pythia8-data ${PYTHIA8_DATA} --lhapdf-lib ${LHAPDF_LIB} --lhapdf-data ${LHAPDF_DATA}
+
+output = ${LOG_DIR}/\$(Cluster).\$(Process).out
+error  = ${LOG_DIR}/\$(Cluster).\$(Process).err
+log    = ${LOG_DIR}/${JOBTAG}.log
+
+should_transfer_files = NO
++RequiresAFS = True
 +JobFlavour = "${FLAVOUR}"
-queue ${CHUNKS}
-EOF
-    
-    echo "Submitted ${DATASET}"
-done
+max_retries = 2
 
-# Generate merge script
-cat > merge.sh << EOF
-#!/bin/bash
-# merge.sh
-# Generated for datasets submitted in the last run
+queue Seed, Chunk from (
+SUBMIT
 
-OUTPUT_BASE="${OUTPUT_BASE}"
-CHUNKS=${CHUNKS}
+    for ((index = 0; index < CHUNKS; ++index)); do
+        seed=$((SEED_START + index))
+        if ((seed < 1 || seed > 900000000)); then
+            echo "ERROR: generated Pythia seed ${seed} is outside [1,900000000]" >&2
+            exit 1
+        fi
+        echo "${seed} ${index}" >> "${submit_file}"
+    done
+    echo ")" >> "${submit_file}"
 
-# Dataset list from last run
-DATASETS=(
-EOF
+    echo "Created ${submit_file}"
+    echo "Generation: ${CHUNKS} jobs x ${EVENTS} events, OniaShower=${ONIASHOWER}, CR=${CRMODE}"
+    echo "Output: ${OUTPUT_DIR}"
+    if [[ ${AUTO_SUBMIT} -eq 1 ]]; then
+        condor_submit "${submit_file}"
+    else
+        echo "No jobs submitted. Inspect the file, then run: condor_submit ${submit_file}"
+    fi
+    exit 0
+fi
 
-for DATASET in "${DATASETS[@]}"; do
-    echo "    \"${DATASET}\"" >> merge.sh
-done
+if [[ "${MODE}" == "cms" ]]; then
+    INPUT_BASE="${INPUT_BASE:-/eos/cms/store/group/phys_smp/ec/shuangyu/2024datasets/AK4}"
+    OUTPUT_DIR="${OUTPUT_DIR:-/eos/user/s/shuangyu/public/Jpsi/eec_unified_cms}"
+    if [[ ${#DATASETS[@]} -eq 0 ]]; then
+        DATASETS=(
+            "Jpsito2Mu_Bin-PTJpsi-8_TuneCP5_13p6TeV_pythia8-RunIIISummer24"
+            "JPsiMuMu_Fil-JPsiNo-2MuPtEta_TuneCP5_13p6TeV_pythia8-evtgen-RunIIISummer24"
+            "ParkingDoubleMuonLowMass0_Run2024G-MINIv6NANOv15"
+            # "QCD_Bin-PT-15to7000_Par-PT-flat2022_Par-JpsiMuMu-Par-OniaOn-CR1_pythia8311-RunIIISummer24_ext1_Private"
+            # "QCD_Bin-PT-15to7000_Par-PT-flat2022_Par-JpsiMuMu-Par-OniaOn-CR1_pythia8311-RunIIISummer24_Private"
+            # "QCD_Bin-PT-15to7000_Par-PT-flat2022_Par-JpsiMuMu_pythia8-RunIIISummer24_ext1_Private"
+            # "QCD_Bin-PT-15to7000_Par-PT-flat2022_Par-JpsiMuMu_pythia8-RunIIISummer24_Private"
+        )
+    fi
+else
+    INPUT_BASE="${INPUT_BASE:-/eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi}"
+    OUTPUT_DIR="${OUTPUT_DIR:-/eos/user/s/shuangyu/public/Jpsi/eec_unified_private}"
+    if [[ ${#DATASETS[@]} -eq 0 ]]; then
+        DATASETS=(
+            "HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8309"
+            "HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8311"
+            "HardQCD_Pt15to7000_Oniaon_CR1_PYTHIA8311"
+        )
+    fi
+fi
 
-cat >> merge.sh << 'EOF'
-)
+mkdir -p "${LOG_DIR}" "${OUTPUT_DIR}"
 
-echo "Merging results for ${#DATASETS[@]} datasets"
+COMMON_ARGUMENTS="--radius ${RADIUS} --jet-pt-min ${JET_PT_MIN} --jet-eta-max ${JET_ETA_MAX} --muon-leading-pt ${MUON_LEADING_PT} --muon-subleading-pt ${MUON_SUBLEADING_PT} --constituent-scaling ${CONSTITUENT_SCALING}"
+if [[ "${MODE}" == "cms" ]]; then
+    COMMON_ARGUMENTS+=" --level ${LEVEL} --cms-filters ${CMS_FILTERS} --hot-zone ${HOT_ZONE} --prompt ${PROMPT} --mass-min ${MASS_MIN} --mass-max ${MASS_MAX}"
+fi
 
-for DATASET in "${DATASETS[@]}"; do
-    OUTPUT_DIR="${OUTPUT_BASE}"
-    CHUNK_FILES="${OUTPUT_DIR}/${DATASET}_Chunk*_Part*.root"
-    MERGED_FILE="${OUTPUT_DIR}/${DATASET}.root"
-    
-    # Count chunk files
-    NUM_FILES=$(ls ${CHUNK_FILES} 2>/dev/null | wc -l)
-    
-    echo ""
-    echo "Dataset: ${DATASET}"
-    echo "  Found ${NUM_FILES} chunk files"
-    
-    if [ ${NUM_FILES} -eq 0 ]; then
-        echo "  WARNING: No chunk files found"
+echo "Mode=${MODE}, R=${RADIUS}, jet pT>${JET_PT_MIN}, |eta|<${JET_ETA_MAX}"
+echo "Muon pT: ${MUON_LEADING_PT}/${MUON_SUBLEADING_PT}; constituent scaling=${CONSTITUENT_SCALING}"
+if [[ "${MODE}" == "cms" ]]; then
+    echo "Dimuon mass window: ${MASS_MIN}-${MASS_MAX} GeV"
+fi
+echo "Generated files: ${GENERATED_DIR}"
+
+for dataset in "${DATASETS[@]}"; do
+    input_dir="${INPUT_BASE}/${dataset}"
+    output_base="${OUTPUT_DIR}/${dataset}"
+    submit_file="${GENERATED_DIR}/${dataset}.sub"
+    if [[ ! -d "${input_dir}" ]]; then
+        echo "WARNING: skipping missing dataset ${input_dir}" >&2
         continue
     fi
-    
-    if [ -f "${MERGED_FILE}" ]; then
-        echo "  Merged file already exists, overwriting"
-    fi
-    
-    # Merge files
-    echo "  Merging to ${MERGED_FILE}"
-    hadd -f -k ${MERGED_FILE} ${CHUNK_FILES}
-    
-    if [ $? -eq 0 ]; then
-        echo "  Success"
-        echo "  Size: $(du -h ${MERGED_FILE} | cut -f1)"
-	echo "  Remove chunk/part files"
-	rm ${CHUNK_FILES}
-    else
-        echo "  Failed"
+
+    cat > "${submit_file}" <<SUBMIT
+universe = vanilla
+getenv = True
+executable = ${SCRIPT_DIR}/run_job.sh
+transfer_executable = False
+arguments = --mode ${MODE} --input ${input_dir} --output ${output_base} --chunks ${CHUNKS} --chunk-id \$(Process) --cmssw ${CMSSW_PATH} --source-dir ${SCRIPT_DIR} ${COMMON_ARGUMENTS}
+
+output = ${LOG_DIR}/${dataset}_\$(Process).out
+error  = ${LOG_DIR}/${dataset}_\$(Process).err
+log    = ${LOG_DIR}/${dataset}.log
+
+should_transfer_files = NO
++RequiresAFS = True
++JobFlavour = "${FLAVOUR}"
+max_retries = 2
+queue ${CHUNKS}
+SUBMIT
+
+    echo "Created ${submit_file}"
+    if [[ ${AUTO_SUBMIT} -eq 1 ]]; then
+        condor_submit "${submit_file}"
     fi
 done
 
-echo ""
-echo "Merge completed"
-EOF
-
-chmod +x merge.sh
-
-echo ""
-echo "========================================"
-echo "Submission completed"
-echo ""
-echo "To check job status:"
-echo "  condor_q"
-echo ""
-echo "To merge results after jobs complete:"
-echo "  ./merge.sh"
-echo ""
-echo "Dataset list:"
-for DATASET in "${DATASETS[@]}"; do
-    echo "  ${DATASET}"
-done
-echo "========================================"
+if [[ ${AUTO_SUBMIT} -eq 0 ]]; then
+    echo "No jobs submitted. Inspect the files, then run:"
+    echo "  for f in ${GENERATED_DIR}/*.sub; do condor_submit \"\${f}\"; done"
+fi

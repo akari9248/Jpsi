@@ -1,0 +1,135 @@
+=========================================
+ Job environment
+=========================================
+  Hostname:  b9p31p6987.cern.ch
+  Input dir: /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8311
+  Output:    HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8311
+  Chunk:     44 / 50
+  Radius:    0.4
+=========================================
+Setting up CMSSW environment...
+Compiling eec.cpp ...
+Compilation done.
+Running: ./eec -i /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8311 -o HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8311 -n 50 -e 44 -r 0.4
+Processing files 3520 to 3599 (out of 4000)
+Total events in this chunk: 80000
+#--------------------------------------------------------------------------
+#                         FastJet release 3.4.1
+#                 M. Cacciari, G.P. Salam and G. Soyez                  
+#     A software package for jet finding and analysis at colliders      
+#                           http://fastjet.fr                           
+#	                                                                      
+# Please cite EPJC72(2012)1896 [arXiv:1111.6097] if you use this package
+# for scientific work and optionally PLB641(2006)57 [hep-ph/0512210].   
+#                                                                       
+# FastJet is provided without warranty under the GNU GPL v2 or higher.  
+# It uses T. Chan's closest pair algorithm, S. Fortune's Voronoi code
+# and 3rd party plugin jet algorithms. See COPYING file for details.
+#--------------------------------------------------------------------------
+1% | Elapsed: 0h 0m 0s | Remaining: 0h 0m 0s
+2% | Elapsed: 0h 0m 1s | Remaining: 0h 0m 49s
+3% | Elapsed: 0h 0m 2s | Remaining: 0h 1m 4s
+4% | Elapsed: 0h 0m 3s | Remaining: 0h 1m 12s
+5% | Elapsed: 0h 0m 4s | Remaining: 0h 1m 16s
+6% | Elapsed: 0h 0m 5s | Remaining: 0h 1m 18s
+7% | Elapsed: 0h 0m 7s | Remaining: 0h 1m 32s
+8% | Elapsed: 0h 0m 8s | Remaining: 0h 1m 32s
+9% | Elapsed: 0h 0m 9s | Remaining: 0h 1m 31s
+10% | Elapsed: 0h 0m 10s | Remaining: 0h 1m 30s
+11% | Elapsed: 0h 0m 11s | Remaining: 0h 1m 29s
+12% | Elapsed: 0h 0m 12s | Remaining: 0h 1m 28s
+13% | Elapsed: 0h 0m 13s | Remaining: 0h 1m 27s
+14% | Elapsed: 0h 0m 14s | Remaining: 0h 1m 25s
+15% | Elapsed: 0h 0m 15s | Remaining: 0h 1m 25s
+16% | Elapsed: 0h 0m 16s | Remaining: 0h 1m 24s
+17% | Elapsed: 0h 0m 17s | Remaining: 0h 1m 22s
+18% | Elapsed: 0h 0m 18s | Remaining: 0h 1m 22s
+19% | Elapsed: 0h 0m 19s | Remaining: 0h 1m 21s
+20% | Elapsed: 0h 0m 20s | Remaining: 0h 1m 20s
+21% | Elapsed: 0h 0m 21s | Remaining: 0h 1m 19s
+22% | Elapsed: 0h 0m 23s | Remaining: 0h 1m 21s
+23% | Elapsed: 0h 0m 24s | Remaining: 0h 1m 20s
+24% | Elapsed: 0h 0m 25s | Remaining: 0h 1m 19s
+25% | Elapsed: 0h 0m 25s | Remaining: 0h 1m 15s
+26% | Elapsed: 0h 0m 26s | Remaining: 0h 1m 14s
+27% | Elapsed: 0h 0m 28s | Remaining: 0h 1m 15s
+28% | Elapsed: 0h 0m 29s | Remaining: 0h 1m 14s
+29% | Elapsed: 0h 0m 30s | Remaining: 0h 1m 13s
+30% | Elapsed: 0h 0m 31s | Remaining: 0h 1m 12s
+31% | Elapsed: 0h 0m 32s | Remaining: 0h 1m 11s
+32% | Elapsed: 0h 0m 33s | Remaining: 0h 1m 10s
+33% | Elapsed: 0h 0m 34s | Remaining: 0h 1m 9s
+34% | Elapsed: 0h 0m 35s | Remaining: 0h 1m 7s
+35% | Elapsed: 0h 0m 36s | Remaining: 0h 1m 6s
+36% | Elapsed: 0h 0m 38s | Remaining: 0h 1m 7s
+37% | Elapsed: 0h 0m 39s | Remaining: 0h 1m 6s
+38% | Elapsed: 0h 0m 40s | Remaining: 0h 1m 5s
+39% | Elapsed: 0h 0m 41s | Remaining: 0h 1m 4s
+40% | Elapsed: 0h 0m 42s | Remaining: 0h 1m 3s
+41% | Elapsed: 0h 0m 43s | Remaining: 0h 1m 1s
+42% | Elapsed: 0h 0m 44s | Remaining: 0h 1m 0s
+43% | Elapsed: 0h 0m 45s | Remaining: 0h 0m 59s
+44% | Elapsed: 0h 0m 47s | Remaining: 0h 0m 59s
+45% | Elapsed: 0h 0m 48s | Remaining: 0h 0m 58s
+46% | Elapsed: 0h 0m 49s | Remaining: 0h 0m 57s
+47% | Elapsed: 0h 0m 50s | Remaining: 0h 0m 56s
+48% | Elapsed: 0h 0m 51s | Remaining: 0h 0m 55s
+49% | Elapsed: 0h 0m 52s | Remaining: 0h 0m 54s
+50% | Elapsed: 0h 0m 53s | Remaining: 0h 0m 53s
+51% | Elapsed: 0h 0m 54s | Remaining: 0h 0m 51s
+52% | Elapsed: 0h 0m 55s | Remaining: 0h 0m 50s
+53% | Elapsed: 0h 0m 56s | Remaining: 0h 0m 49s
+54% | Elapsed: 0h 0m 58s | Remaining: 0h 0m 49s
+55% | Elapsed: 0h 0m 59s | Remaining: 0h 0m 48s
+56% | Elapsed: 0h 1m 0s | Remaining: 0h 0m 47s
+57% | Elapsed: 0h 1m 1s | Remaining: 0h 0m 46s
+58% | Elapsed: 0h 1m 2s | Remaining: 0h 0m 44s
+59% | Elapsed: 0h 1m 3s | Remaining: 0h 0m 43s
+60% | Elapsed: 0h 1m 4s | Remaining: 0h 0m 42s
+61% | Elapsed: 0h 1m 5s | Remaining: 0h 0m 41s
+62% | Elapsed: 0h 1m 7s | Remaining: 0h 0m 41s
+63% | Elapsed: 0h 1m 8s | Remaining: 0h 0m 39s
+64% | Elapsed: 0h 1m 9s | Remaining: 0h 0m 38s
+65% | Elapsed: 0h 1m 10s | Remaining: 0h 0m 37s
+66% | Elapsed: 0h 1m 11s | Remaining: 0h 0m 36s
+67% | Elapsed: 0h 1m 13s | Remaining: 0h 0m 35s
+68% | Elapsed: 0h 1m 14s | Remaining: 0h 0m 34s
+69% | Elapsed: 0h 1m 15s | Remaining: 0h 0m 33s
+70% | Elapsed: 0h 1m 16s | Remaining: 0h 0m 32s
+71% | Elapsed: 0h 1m 17s | Remaining: 0h 0m 31s
+72% | Elapsed: 0h 1m 19s | Remaining: 0h 0m 30s
+73% | Elapsed: 0h 1m 20s | Remaining: 0h 0m 29s
+74% | Elapsed: 0h 1m 21s | Remaining: 0h 0m 28s
+75% | Elapsed: 0h 1m 22s | Remaining: 0h 0m 27s
+76% | Elapsed: 0h 1m 23s | Remaining: 0h 0m 26s
+77% | Elapsed: 0h 1m 24s | Remaining: 0h 0m 25s
+78% | Elapsed: 0h 1m 26s | Remaining: 0h 0m 24s
+79% | Elapsed: 0h 1m 27s | Remaining: 0h 0m 23s
+80% | Elapsed: 0h 1m 28s | Remaining: 0h 0m 22s
+81% | Elapsed: 0h 1m 29s | Remaining: 0h 0m 20s
+82% | Elapsed: 0h 1m 30s | Remaining: 0h 0m 19s
+83% | Elapsed: 0h 1m 31s | Remaining: 0h 0m 18s
+84% | Elapsed: 0h 1m 32s | Remaining: 0h 0m 17s
+85% | Elapsed: 0h 1m 34s | Remaining: 0h 0m 16s
+86% | Elapsed: 0h 1m 37s | Remaining: 0h 0m 15s
+87% | Elapsed: 0h 1m 39s | Remaining: 0h 0m 14s
+88% | Elapsed: 0h 1m 40s | Remaining: 0h 0m 13s
+89% | Elapsed: 0h 1m 41s | Remaining: 0h 0m 12s
+90% | Elapsed: 0h 1m 42s | Remaining: 0h 0m 11s
+91% | Elapsed: 0h 1m 43s | Remaining: 0h 0m 10s
+92% | Elapsed: 0h 1m 45s | Remaining: 0h 0m 9s
+93% | Elapsed: 0h 1m 46s | Remaining: 0h 0m 7s
+94% | Elapsed: 0h 1m 47s | Remaining: 0h 0m 6s
+95% | Elapsed: 0h 1m 48s | Remaining: 0h 0m 5s
+96% | Elapsed: 0h 1m 49s | Remaining: 0h 0m 4s
+97% | Elapsed: 0h 1m 50s | Remaining: 0h 0m 3s
+98% | Elapsed: 0h 1m 51s | Remaining: 0h 0m 2s
+99% | Elapsed: 0h 1m 52s | Remaining: 0h 0m 1s
+100% | Elapsed: 0h 1m 53s | Remaining: 0h 0m 0s
+Saved part 0 to HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8311_Chunk44_Part0.root (valid: 13546, processed: 80000, final part)
+
+Processing completed successfully!
+Total events processed: 80000
+Total parts created: 0
+
+Job finished. Chunk 44 done.

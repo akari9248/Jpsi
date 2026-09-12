@@ -1,0 +1,15 @@
+In file included from eec.cpp:4:
+include/CharmoniumInfo.h: In member function 'virtual Int_t CharmoniumInfo::Cut(Long64_t)':
+include/CharmoniumInfo.h:214:36: warning: unused parameter 'entry' [-Wunused-parameter]
+  214 | Int_t CharmoniumInfo::Cut(Long64_t entry)
+      |                           ~~~~~~~~~^~~~~
+Warning in <TNetXNGFile::Init>: file root://eoscms.cern.ch//eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaon_CR1_PYTHIA8311/pythia8_jpsi_events_3533.root probably not closed, trying to recover
+Warning in <TNetXNGFile::Init>: no keys recovered, file has been made a Zombie
+Error in <TNetXNGFile::TNetXNGFile>: Object is in 'zombie' state
+Warning in <TFile::Init>: file /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaon_CR1_PYTHIA8311/pythia8_jpsi_events_3533.root probably not closed, trying to recover
+Warning in <TFile::Init>: no keys recovered, file has been made a Zombie
+Warning in <TNetXNGFile::Init>: file root://eoscms.cern.ch//eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaon_CR1_PYTHIA8311/pythia8_jpsi_events_3533.root probably not closed, trying to recover
+Warning in <TNetXNGFile::Init>: no keys recovered, file has been made a Zombie
+Error in <TNetXNGFile::TNetXNGFile>: Object is in 'zombie' state
+Warning in <TFile::Init>: file /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaon_CR1_PYTHIA8311/pythia8_jpsi_events_3533.root probably not closed, trying to recover
+Warning in <TFile::Init>: no keys recovered, file has been made a Zombie

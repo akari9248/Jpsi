@@ -1,0 +1,3 @@
+# Metadata objects intentionally excluded from merged analysis outputs.
+analysis_version
+analysis_config

@@ -1,0 +1,15 @@
+=========================================
+ Job environment
+=========================================
+  Hostname:  b9p19p3940.cern.ch
+  Input dir: /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8311
+  Output:    HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8311
+  Chunk:     36 / 20
+  Radius:    0.4
+=========================================
+Setting up CMSSW environment...
+Compiling eec.cpp ...
+Compilation done.
+Running: ./eec -i /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8311 -o HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8311 -n 20 -e 36 -r 0.4
+Chunk index 36 out of range, nothing to do.
+Job finished. Chunk 36 done.

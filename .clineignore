@@ -1,0 +1,20 @@
+# 忽略二进制与数据文件
+*.root
+*.lhe
+*.cbp
+*.so
+*.a
+*.tar.gz
+*.pcm
+
+# 忽略大型编译/中间目录
+CMSSW_*
+.git/
+build/
+lib/
+bin/
+tmp/
+
+# 忽略日志
+*.log
+*.out

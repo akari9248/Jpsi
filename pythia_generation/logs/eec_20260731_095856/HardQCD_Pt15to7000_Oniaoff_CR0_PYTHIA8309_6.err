@@ -1,0 +1,15 @@
+In file included from eec.cpp:4:
+include/CharmoniumInfo.h: In member function 'virtual Int_t CharmoniumInfo::Cut(Long64_t)':
+include/CharmoniumInfo.h:214:36: warning: unused parameter 'entry' [-Wunused-parameter]
+  214 | Int_t CharmoniumInfo::Cut(Long64_t entry)
+      |                           ~~~~~~~~~^~~~~
+Error in <TNetXNGFile::ReadBuffer>: error reading all requested bytes, got 0 of 300
+Error in <TNetXNGFile::Init>: root://eoscms.cern.ch//eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8309/pythia8_jpsi_events_2230.root failed to read the file type data.
+Error in <TNetXNGFile::TNetXNGFile>: Object is in 'zombie' state
+Error in <TFile::ReadBuffer>: error reading all requested bytes from file /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8309/pythia8_jpsi_events_2230.root, got 0 of 300
+Error in <TFile::Init>: /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8309/pythia8_jpsi_events_2230.root failed to read the file type data.
+Error in <TNetXNGFile::ReadBuffer>: error reading all requested bytes, got 0 of 300
+Error in <TNetXNGFile::Init>: root://eoscms.cern.ch//eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8309/pythia8_jpsi_events_2230.root failed to read the file type data.
+Error in <TNetXNGFile::TNetXNGFile>: Object is in 'zombie' state
+Error in <TFile::ReadBuffer>: error reading all requested bytes from file /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8309/pythia8_jpsi_events_2230.root, got 0 of 300
+Error in <TFile::Init>: /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8309/pythia8_jpsi_events_2230.root failed to read the file type data.

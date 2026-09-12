@@ -1,0 +1,13 @@
+In file included from eec.cpp:4:
+include/CharmoniumInfo.h: In member function 'virtual Int_t CharmoniumInfo::Cut(Long64_t)':
+include/CharmoniumInfo.h:214:36: warning: unused parameter 'entry' [-Wunused-parameter]
+  214 | Int_t CharmoniumInfo::Cut(Long64_t entry)
+      |                           ~~~~~~~~~^~~~~
+Error in <TNetXNGFile::Open>: [ERROR] Server responded with an error: [3011] Unable to open file /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8309/pythia8_jpsi_events_189.root; No such file or directory
+
+SysError in <TFile::ReadBuffer>: error reading from file /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8309/pythia8_jpsi_events_189.root Input/output error
+Error in <TFile::Init>: /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8309/pythia8_jpsi_events_189.root failed to read the file type data.
+Error in <TNetXNGFile::Open>: [ERROR] Server responded with an error: [3011] Unable to open file /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8309/pythia8_jpsi_events_189.root; No such file or directory
+
+SysError in <TFile::ReadBuffer>: error reading from file /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8309/pythia8_jpsi_events_189.root No such file or directory
+Error in <TFile::Init>: /eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8309/pythia8_jpsi_events_189.root failed to read the file type data.
