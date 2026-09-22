@@ -10,16 +10,18 @@ CHUNKS=100
 RADIUS=0.4
 JET_PT_MIN=30
 JET_ETA_MAX=5
-MUON_LEADING_PT=4
-MUON_SUBLEADING_PT=3
+MUON_LEADING_PT=2
+MUON_SUBLEADING_PT=2
 MASS_MIN=2.9
 MASS_MAX=3.3
 CONSTITUENT_SCALING="on"
 LEVEL="both"
 CMS_FILTERS="on"
 HOT_ZONE="on"
-PROMPT="on"
+PROMPT="off"
 FLAVOUR="microcentury"
+MAX_RUNTIME=""
+JOB_IO="on"
 AUTO_SUBMIT=0
 DATASETS=()
 EVENTS=500
@@ -39,16 +41,18 @@ Usage: $0 --mode generate|private|cms [options]
   --radius R             Common anti-kT/association radius (default: 0.4)
   --jet-pt-min X         Common selected-jet threshold (default: 30)
   --jet-eta-max X        Common selected-jet acceptance (default: 5)
-  --muon-leading-pt X    Common leading-muon threshold (default: 4)
-  --muon-subleading-pt X Common subleading-muon threshold (default: 3)
+  --muon-leading-pt X    Common leading-muon threshold (default: 2)
+  --muon-subleading-pt X Common subleading-muon threshold (default: 2)
   --mass-min X           Dimuon mass-window lower edge (default: 2.9)
   --mass-max X           Dimuon mass-window upper edge (default: 3.3)
   --constituent-scaling on|off
   --level gen|reco|both  CMS mode only (default: both)
   --cms-filters on|off   CMS trigger and MET filters (default: on)
   --hot-zone on|off      CMS reco hot-zone filter (default: on)
-  --prompt on|off        CMS prompt-J/psi selection (default: on)
+  --prompt on|off        CMS prompt-J/psi selection (default: off)
   --flavour NAME         HTCondor JobFlavour
+  --max-runtime SECONDS  Exact HTCondor runtime limit; overrides --flavour
+  --job-io on|off        Write per-job stdout/stderr files (default: on)
   --cmssw DIR            CMSSW release directory
   --submit               Submit; otherwise only generate .sub files
 
@@ -81,6 +85,8 @@ while [[ $# -gt 0 ]]; do
         --hot-zone) HOT_ZONE="$2"; shift 2 ;;
         --prompt) PROMPT="$2"; shift 2 ;;
         --flavour) FLAVOUR="$2"; shift 2 ;;
+        --max-runtime) MAX_RUNTIME="$2"; shift 2 ;;
+        --job-io) JOB_IO="$2"; shift 2 ;;
         --cmssw) CMSSW_PATH="$2"; shift 2 ;;
         --events) EVENTS="$2"; shift 2 ;;
         --seed-start) SEED_START="$2"; shift 2 ;;
@@ -98,7 +104,21 @@ if [[ "${MODE}" != "cms" && "${MODE}" != "private" && \
     echo "ERROR: mode must be cms, private, or generate" >&2
     exit 1
 fi
+if [[ -n "${MAX_RUNTIME}" && \
+      ( ! "${MAX_RUNTIME}" =~ ^[0-9]+$ || "${MAX_RUNTIME}" -le 0 ) ]]; then
+    echo "ERROR: max-runtime must be a positive integer" >&2
+    exit 1
+fi
+if [[ "${JOB_IO}" != "on" && "${JOB_IO}" != "off" ]]; then
+    echo "ERROR: job-io must be on or off" >&2
+    exit 1
+fi
 
+if [[ -n "${MAX_RUNTIME}" ]]; then
+    RUNTIME_CLASSAD="+MaxRuntime = ${MAX_RUNTIME}"
+else
+    RUNTIME_CLASSAD="+JobFlavour = \"${FLAVOUR}\""
+fi
 # Compile once on the submit host. Batch workers use this prebuilt binary and
 # therefore do not depend on SCRAM being able to initialize inside the slot.
 echo "Building ${MODE} executable before creating Condor jobs"
@@ -135,6 +155,14 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 GENERATED_DIR="${SCRIPT_DIR}/generated/${MODE}_${TIMESTAMP}"
 LOG_DIR="${GENERATED_DIR}/logs"
 
+if [[ "${JOB_IO}" == "on" ]]; then
+    JOB_OUTPUT="${LOG_DIR}/\$(Cluster).\$(Process).out"
+    JOB_ERROR="${LOG_DIR}/\$(Cluster).\$(Process).err"
+else
+    JOB_OUTPUT="/dev/null"
+    JOB_ERROR="/dev/null"
+fi
+
 if [[ "${MODE}" == "generate" ]]; then
     OUTPUT_DIR="${OUTPUT_DIR:-/eos/cms/store/group/phys_smp/ec/shuangyu/Jpsi/HardQCD_Pt15to7000_Unified}"
     mkdir -p "${LOG_DIR}" "${OUTPUT_DIR}"
@@ -147,13 +175,13 @@ executable = ${SCRIPT_DIR}/run_job.sh
 transfer_executable = False
 arguments = --mode generate --output ${OUTPUT_DIR} --chunk-id \$(Chunk) --seed \$(Seed) --events ${EVENTS} --oniashower ${ONIASHOWER} --crmode ${CRMODE} --cmssw ${CMSSW_PATH} --source-dir ${SCRIPT_DIR} --pythia8-data ${PYTHIA8_DATA} --lhapdf-lib ${LHAPDF_LIB} --lhapdf-data ${LHAPDF_DATA}
 
-output = ${LOG_DIR}/\$(Cluster).\$(Process).out
-error  = ${LOG_DIR}/\$(Cluster).\$(Process).err
+output = ${JOB_OUTPUT}
+error  = ${JOB_ERROR}
 log    = ${LOG_DIR}/${JOBTAG}.log
 
 should_transfer_files = NO
 +RequiresAFS = True
-+JobFlavour = "${FLAVOUR}"
+${RUNTIME_CLASSAD}
 max_retries = 2
 
 queue Seed, Chunk from (
@@ -201,6 +229,8 @@ else
         DATASETS=(
             "HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8309"
             "HardQCD_Pt15to7000_Oniaoff_CR0_PYTHIA8311"
+            "HardQCD_Pt15to7000_Oniaoff_CR1_PYTHIA8311"
+            "HardQCD_Pt15to7000_Oniaon_CR0_PYTHIA8311"
             "HardQCD_Pt15to7000_Oniaon_CR1_PYTHIA8311"
         )
     fi

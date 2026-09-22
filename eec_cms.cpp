@@ -27,7 +27,7 @@ struct Options {
   int chunkIndex = 0;
   bool applyCmsFilters = true;
   bool applyHotZone = true;
-  bool requirePrompt = true;
+  bool requirePrompt = false;
   Settings settings;
 };
 
@@ -267,6 +267,21 @@ std::vector<Jet> buildJets(const std::vector<double> &jetPt,
   return result;
 }
 
+void fillInclusiveJetDenominator(const std::vector<double> &jetPt,
+                                 const std::vector<double> &jetEta,
+                                 const std::vector<bool> *passHotZone,
+                                 const Settings &settings,
+                                 Histograms &histograms, double eventWeight) {
+  for (std::size_t i = 0; i < jetPt.size(); ++i) {
+    if (jetPt.at(i) < settings.jetPtMin ||
+        std::abs(jetEta.at(i)) > settings.jetAbsEtaMax)
+      continue;
+    if (passHotZone && !passHotZone->at(i))
+      continue;
+    histograms.fillInclusiveJet(jetPt.at(i), eventWeight);
+  }
+}
+
 bool passesCmsFilters(const MCJetsAndDaughters &event) {
   if (!event.TriggerBits || event.TriggerBits->size() < 3 ||
       !event.TriggerBits->at(event.TriggerBits->size() - 3))
@@ -329,6 +344,20 @@ int main(int argc, char **argv) {
           recoHistograms->fillCut(1, weight);
         if (options.applyCmsFilters && !passesCmsFilters(event))
           continue;
+
+        // Eq. (1) of arXiv:1702.03287 uses the inclusive-jet cross section in
+        // the denominator. Fill it before applying any J/psi-candidate cuts.
+        if (genHistograms)
+          fillInclusiveJetDenominator(*event.GenJetPt, *event.GenJetEta,
+                                      nullptr, options.settings,
+                                      *genHistograms, weight);
+        if (recoHistograms) {
+          const std::vector<bool> *hotZone =
+              options.applyHotZone ? event.RecoJetPassHotZone : nullptr;
+          fillInclusiveJetDenominator(*event.RecoJetPt, *event.RecoJetEta,
+                                      hotZone, options.settings,
+                                      *recoHistograms, weight);
+        }
 
         if (genHistograms) {
           Candidate candidate;

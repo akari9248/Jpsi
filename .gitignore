@@ -1,5 +1,5 @@
 logs/*
 /bin/
-/generated/
-/plots_*/
+generated/
+plots_*/
 archive/

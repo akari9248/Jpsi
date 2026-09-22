@@ -25,6 +25,7 @@ namespace {
 
 constexpr const char *dataFileName =
     "ParkingDoubleMuonLowMass0_Run2024G-MINIv6NANOv15.root";
+constexpr int cosChiRebin = 2;
 
 struct Options {
   std::string signalFile =
@@ -202,9 +203,15 @@ void drawOverlay(std::vector<std::unique_ptr<TH1D>> histograms,
                  const std::vector<std::string> &labels,
                  const std::string &title, const std::string &output,
                  const std::string &yTitle, bool normalizeShapes,
-                 bool positiveHalf, bool logarithmic) {
+                 bool positiveHalf, bool logarithmic,
+                 double ratioUpperLimit = 5.0) {
   if (histograms.empty() || histograms.size() != labels.size())
     throw std::runtime_error("invalid plotting inputs");
+  for (auto &histogram : histograms) {
+    if (histogram->GetNbinsX() % cosChiRebin != 0)
+      throw std::runtime_error("coschi rebin factor does not divide bins");
+    histogram->Rebin(cosChiRebin);
+  }
   if (normalizeShapes)
     for (auto &histogram : histograms)
       normalize(*histogram, positiveHalf);
@@ -274,15 +281,15 @@ void drawOverlay(std::vector<std::unique_ptr<TH1D>> histograms,
   TLegend legend(0.48, 0.66, 0.94, 0.90);
   legend.SetBorderSize(0);
   legend.SetFillStyle(0);
-  legend.SetTextSize(0.031);
+  legend.SetTextSize(0.040);
   for (std::size_t i = 0; i < histograms.size(); ++i)
     legend.AddEntry(histograms[i].get(), labels[i].c_str(), "lep");
   legend.Draw();
 
   lower.cd();
   std::vector<std::unique_ptr<TH1D>> ratios;
-  double ratioMinimum = 0.0;
-  double ratioMaximum = 2.0;
+  double ratioMinimum = std::numeric_limits<double>::infinity();
+  double ratioMaximum = -std::numeric_limits<double>::infinity();
   for (std::size_t i = 1; i < histograms.size(); ++i) {
     auto ratio = cloneHistogram(*histograms[i],
                                 "sideband_ratio_" + std::to_string(i));
@@ -290,11 +297,14 @@ void drawOverlay(std::vector<std::unique_ptr<TH1D>> histograms,
     for (int bin = 1; bin <= ratio->GetNbinsX(); ++bin) {
       if (positiveHalf && ratio->GetXaxis()->GetBinCenter(bin) < 0.0)
         continue;
-      const double content = ratio->GetBinContent(bin);
-      if (!std::isfinite(content))
+      if (histograms.front()->GetBinContent(bin) == 0.0)
         continue;
-      ratioMinimum = std::min(ratioMinimum, content);
-      ratioMaximum = std::max(ratioMaximum, content);
+      const double content = ratio->GetBinContent(bin);
+      const double error = ratio->GetBinError(bin);
+      if (!std::isfinite(content) || !std::isfinite(error))
+        continue;
+      ratioMinimum = std::min(ratioMinimum, content - error);
+      ratioMaximum = std::max(ratioMaximum, content + error);
     }
     ratio->SetTitle("");
     ratio->GetYaxis()->SetTitle("Ratio to first");
@@ -310,8 +320,16 @@ void drawOverlay(std::vector<std::unique_ptr<TH1D>> histograms,
       ratio->GetXaxis()->SetRangeUser(0.0, 1.0);
     ratios.push_back(std::move(ratio));
   }
-  const double ratioLow = std::max(-2.0, 1.15 * ratioMinimum);
-  const double ratioHigh = std::min(5.0, 1.15 * ratioMaximum);
+  if (!std::isfinite(ratioMinimum) || !std::isfinite(ratioMaximum)) {
+    ratioMinimum = 0.0;
+    ratioMaximum = 2.0;
+  }
+  ratioMinimum = std::min(ratioMinimum, 1.0);
+  ratioMaximum = std::max(ratioMaximum, 1.0);
+  const double ratioSpan = std::max(ratioMaximum - ratioMinimum, 0.10);
+  const double ratioLow = std::max(-2.0, ratioMinimum - 0.15 * ratioSpan);
+  const double ratioHigh =
+      std::min(ratioUpperLimit, ratioMaximum + 0.15 * ratioSpan);
   for (std::size_t i = 0; i < ratios.size(); ++i) {
     ratios[i]->GetYaxis()->SetRangeUser(ratioLow, ratioHigh);
     ratios[i]->Draw(i == 0 ? "E1" : "E1 SAME");
@@ -330,8 +348,12 @@ void drawMcComparison(std::vector<std::unique_ptr<TH1D>> histograms,
                       bool positiveHalf) {
   if (histograms.empty() || histograms.size() != labels.size())
     throw std::runtime_error("invalid MC comparison inputs");
-  for (auto &histogram : histograms)
+  for (auto &histogram : histograms) {
+    if (histogram->GetNbinsX() % cosChiRebin != 0)
+      throw std::runtime_error("coschi rebin factor does not divide bins");
+    histogram->Rebin(cosChiRebin);
     normalize(*histogram, positiveHalf);
+  }
 
   const std::vector<int> colors = {kBlack,     kAzure + 1,   kRed + 1,
                                    kGreen + 2, kMagenta + 1, kOrange + 7};
@@ -343,7 +365,7 @@ void drawMcComparison(std::vector<std::unique_ptr<TH1D>> histograms,
     histogram.SetLineColor(colors[index % colors.size()]);
     histogram.SetMarkerColor(colors[index % colors.size()]);
     histogram.SetMarkerStyle(markers[index % markers.size()]);
-    histogram.SetMarkerSize(0.8);
+    histogram.SetMarkerSize(1.0);
     histogram.SetLineWidth(2);
     maximum = std::max(maximum, histogram.GetMaximum());
     for (int bin = 1; bin <= histogram.GetNbinsX(); ++bin) {
@@ -353,7 +375,7 @@ void drawMcComparison(std::vector<std::unique_ptr<TH1D>> histograms,
     }
   }
 
-  TCanvas canvas("mc_comparison_canvas", "mc_comparison_canvas", 850, 850);
+  TCanvas canvas("mc_comparison_canvas", "mc_comparison_canvas", 950, 900);
   TPad upper("mc_upper", "mc_upper", 0.0, 0.30, 1.0, 1.0);
   TPad lower("mc_lower", "mc_lower", 0.0, 0.0, 1.0, 0.30);
   upper.SetBottomMargin(0.025);
@@ -380,10 +402,10 @@ void drawMcComparison(std::vector<std::unique_ptr<TH1D>> histograms,
   for (std::size_t index = 1; index < histograms.size(); ++index)
     histograms[index]->Draw("E1 SAME");
 
-  TLegend legend(0.48, 0.67, 0.94, 0.90);
+  TLegend legend(0.38, 0.62, 0.94, 0.90);
   legend.SetBorderSize(0);
   legend.SetFillStyle(0);
-  legend.SetTextSize(0.032);
+  legend.SetTextSize(0.047);
   for (std::size_t index = 0; index < histograms.size(); ++index)
     legend.AddEntry(histograms[index].get(), labels[index].c_str(), "lep");
   legend.Draw();
@@ -507,11 +529,27 @@ void processHistogram(const Options &options, const std::vector<Sample> &mc,
                 "Raw sideband subtraction, " + title,
                 path(options.outputDirectory,
                      "raw_subtraction_" + key + outputSuffix(positiveHalf)),
-                "Raw weighted entries", false, positiveHalf, true);
+                "Raw weighted entries", false, positiveHalf, true, 1.0);
+
+    std::vector<std::unique_ptr<TH1D>> normalizedSubtraction;
+    normalizedSubtraction.push_back(
+        cloneHistogram(*signal, "normalized_signal"));
+    normalizedSubtraction.push_back(
+        cloneHistogram(*background, "normalized_background"));
+    normalizedSubtraction.push_back(
+        cloneHistogram(*extracted, "normalized_extracted"));
+    drawOverlay(
+        std::move(normalizedSubtraction),
+        {"Data 2.9-3.3", "Sideband background estimate", "Extracted signal"},
+        "Normalized sideband-subtraction shapes, " + title,
+        path(options.outputDirectory,
+             "normalized_subtraction_" + key + outputSuffix(positiveHalf)),
+        "Normalized EEC", true, positiveHalf, true);
 
     std::vector<std::unique_ptr<TH1D>> comparison;
     comparison.push_back(cloneHistogram(*extracted, "comparison_extracted"));
-    std::vector<std::string> comparisonLabels = {"Sideband-subtracted data"};
+    std::vector<std::string> comparisonLabels = {
+        "Sideband-subtracted data 2024G"};
     for (std::size_t i = 0; i < mc.size(); ++i) {
       comparison.push_back(loadSample(mc[i], options.rootDirectory,
                                       histogramName,
@@ -537,20 +575,21 @@ int main(int argc, char **argv) {
       throw std::runtime_error("cannot create " + options.outputDirectory);
     gStyle->SetOptStat(0);
     gStyle->SetTitleBorderSize(0);
+    gStyle->SetLegendFont(42);
 
     const std::vector<Sample> mcSamples = {
         {"Soft QCD",
          {path(options.mcDirectory,
                "JPsiMuMu_Fil-JPsiNo-2MuPtEta_TuneCP5_13p6TeV_pythia8-"
                "evtgen-RunIIISummer24.root")}},
-        {"Hard QCD, Onia off (nominal+ext1)",
+        {"Hard QCD, onia off + CR0",
          {path(options.mcDirectory,
                "QCD_Bin-PT-15to7000_Par-PT-flat2022_"
                "Par-JpsiMuMu_pythia8-RunIIISummer24_Private.root"),
           path(options.mcDirectory,
                "QCD_Bin-PT-15to7000_Par-PT-flat2022_"
                "Par-JpsiMuMu_pythia8-RunIIISummer24_ext1_Private.root")}},
-        {"Hard QCD, Onia on (nominal+ext1)",
+        {"Hard QCD, onia on + CR1",
          {path(options.mcDirectory,
                "QCD_Bin-PT-15to7000_Par-PT-flat2022_Par-JpsiMuMu-Par-"
                "OniaOn-CR1_pythia8311-RunIIISummer24_Private.root"),

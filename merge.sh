@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRAGMENTATION_TOOL="${SCRIPT_DIR}/bin/make_fragmentation_function"
 # This hadd build does not support -L / -Ltype (skip list), so
 # hadd_skip_metadata.txt is no longer used. If you later move to a ROOT
 # version that supports it, restore:
@@ -13,6 +14,7 @@ OUTPUT_DIR=""
 EXPECTED_CHUNKS=""
 COMBINE_OUTPUT=""
 CLEANUP=0
+HADD_JOBS=8
 DATASETS=()
 
 usage() {
@@ -26,6 +28,7 @@ Options:
   --dataset NAME         Dataset to merge; may be repeated
   --expected-chunks N    Fail if any chunk from 0 through N-1 is missing
   --combine-output FILE  Also combine all merged datasets into one ROOT file
+  --hadd-jobs N          Parallel hadd workers (default: 8)
   --cleanup              Delete chunk files after every merge succeeds
   -h, --help             Show this help
 
@@ -51,6 +54,7 @@ else
             --dataset) DATASETS+=("$2"); shift 2 ;;
             --expected-chunks) EXPECTED_CHUNKS="$2"; shift 2 ;;
             --combine-output) COMBINE_OUTPUT="$2"; shift 2 ;;
+            --hadd-jobs) HADD_JOBS="$2"; shift 2 ;;
             --cleanup) CLEANUP=1; shift ;;
             -h|--help) usage; exit 0 ;;
             *) echo "ERROR: unknown option $1" >&2; usage >&2; exit 1 ;;
@@ -74,10 +78,50 @@ if [[ -n "${EXPECTED_CHUNKS}" && \
     echo "ERROR: --expected-chunks must be a positive integer" >&2
     exit 1
 fi
+if [[ ! "${HADD_JOBS}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: --hadd-jobs must be a positive integer" >&2
+    exit 1
+fi
 if [[ ! -d "${OUTPUT_DIR}" ]]; then
     echo "ERROR: output directory does not exist: ${OUTPUT_DIR}" >&2
     exit 1
 fi
+
+HADD_PARALLEL_ARGS=()
+HADD_LOCAL_TEMP="$(mktemp -d /tmp/jpsi-hadd-XXXXXX)"
+if (( HADD_JOBS > 1 )); then
+    HADD_PARALLEL_ARGS=(-j "${HADD_JOBS}" -d "${HADD_LOCAL_TEMP}")
+    echo "Parallel hadd: ${HADD_JOBS} workers"
+fi
+echo "Local merge directory: ${HADD_LOCAL_TEMP}"
+
+cleanup_hadd_local_temp() {
+    if [[ -n "${HADD_LOCAL_TEMP}" && -d "${HADD_LOCAL_TEMP}" && \
+          "${HADD_LOCAL_TEMP}" == /tmp/jpsi-hadd-* ]]; then
+        rm -rf -- "${HADD_LOCAL_TEMP}"
+    fi
+}
+trap cleanup_hadd_local_temp EXIT
+
+publish_root_file() {
+    local source="$1"
+    local destination="$2"
+    local staged
+    if [[ "${destination}" == *.root ]]; then
+        staged="${destination%.root}.copy.$$.root"
+    else
+        staged="${destination}.copy.$$.root"
+    fi
+    if ! cp -f -- "${source}" "${staged}"; then
+        rm -f -- "${staged}"
+        return 1
+    fi
+    if ! rootls "${staged}" >/dev/null; then
+        rm -f -- "${staged}"
+        return 1
+    fi
+    mv -f -- "${staged}" "${destination}"
+}
 
 # If no datasets were named, infer them from DATASET_ChunkN.root.
 if [[ ${#DATASETS[@]} -eq 0 ]]; then
@@ -112,7 +156,8 @@ for dataset in "${DATASETS[@]}"; do
 
     # Remove only temporary outputs left by an interrupted earlier merge.
     shopt -s nullglob
-    staleTemporaryFiles=("${OUTPUT_DIR}/${dataset}.tmp."*.root)
+    staleTemporaryFiles=("${OUTPUT_DIR}/${dataset}.tmp."*.root
+                         "${OUTPUT_DIR}/${dataset}.copy."*.root)
     shopt -u nullglob
     if [[ ${#staleTemporaryFiles[@]} -gt 0 ]]; then
         echo "Removing ${#staleTemporaryFiles[@]} stale temporary merge file(s) for ${dataset}"
@@ -148,8 +193,8 @@ for dataset in "${DATASETS[@]}"; do
     echo "Merging ${#files[@]} chunks for ${dataset} -> ${target}"
     # Do not use hadd -k: a corrupt input should stop the final merge.
     # If metadata conflicts cause hadd to fail, switch to "hadd -f -k".
-    temporary="${target%.root}.tmp.$$.root"
-    if ! hadd -f "${temporary}" "${files[@]}"; then
+    temporary="${HADD_LOCAL_TEMP}/${dataset}.tmp.$$.root"
+    if ! hadd "${HADD_PARALLEL_ARGS[@]}" -f "${temporary}" "${files[@]}"; then
         rm -f -- "${temporary}"
         echo "ERROR: hadd failed for ${dataset}; chunk files were kept" >&2
         exit 1
@@ -159,7 +204,22 @@ for dataset in "${DATASETS[@]}"; do
         echo "ERROR: merged ROOT validation failed for ${dataset}; chunk files were kept" >&2
         exit 1
     fi
-    mv -f -- "${temporary}" "${target}"
+    if [[ ! -x "${FRAGMENTATION_TOOL}" ]]; then
+        rm -f -- "${temporary}"
+        echo "ERROR: missing ${FRAGMENTATION_TOOL}; run ./compile.sh --target fragmentation" >&2
+        exit 1
+    fi
+    if ! "${FRAGMENTATION_TOOL}" "${temporary}"; then
+        rm -f -- "${temporary}"
+        echo "ERROR: fragmentation-function construction failed for ${dataset}" >&2
+        exit 1
+    fi
+    if ! publish_root_file "${temporary}" "${target}"; then
+        rm -f -- "${temporary}"
+        echo "ERROR: failed to publish validated ROOT file for ${dataset}" >&2
+        exit 1
+    fi
+    rm -f -- "${temporary}"
     MERGED_FILES+=("${target}")
 done
 
@@ -168,18 +228,25 @@ if [[ -n "${COMBINE_OUTPUT}" ]]; then
         COMBINE_OUTPUT="${OUTPUT_DIR}/${COMBINE_OUTPUT}"
     fi
     echo "Combining ${#MERGED_FILES[@]} datasets -> ${COMBINE_OUTPUT}"
-    if [[ "${COMBINE_OUTPUT}" == *.root ]]; then
-        temporary="${COMBINE_OUTPUT%.root}.tmp.$$.root"
-    else
-        temporary="${COMBINE_OUTPUT}.tmp.$$.root"
-    fi
-    if ! hadd -f "${temporary}" "${MERGED_FILES[@]}" || \
+    combineName="${COMBINE_OUTPUT##*/}"
+    temporary="${HADD_LOCAL_TEMP}/${combineName%.root}.tmp.$$.root"
+    if ! hadd "${HADD_PARALLEL_ARGS[@]}" -f "${temporary}" "${MERGED_FILES[@]}" || \
        ! rootls "${temporary}" >/dev/null; then
         rm -f -- "${temporary}"
         echo "ERROR: combined ROOT creation failed; chunk files were kept" >&2
         exit 1
     fi
-    mv -f -- "${temporary}" "${COMBINE_OUTPUT}"
+    if ! "${FRAGMENTATION_TOOL}" "${temporary}"; then
+        rm -f -- "${temporary}"
+        echo "ERROR: fragmentation-function construction failed for combined output" >&2
+        exit 1
+    fi
+    if ! publish_root_file "${temporary}" "${COMBINE_OUTPUT}"; then
+        rm -f -- "${temporary}"
+        echo "ERROR: failed to publish validated combined ROOT file" >&2
+        exit 1
+    fi
+    rm -f -- "${temporary}"
     echo "Merge complete: ${#MERGED_FILES[@]} dataset files plus ${COMBINE_OUTPUT}"
 else
     echo "Merge complete: kept ${#MERGED_FILES[@]} dataset result(s) separate."

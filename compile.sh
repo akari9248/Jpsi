@@ -12,7 +12,7 @@ while [[ $# -gt 0 ]]; do
         --target) TARGET="$2"; shift 2 ;;
         --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
         -h|--help)
-            echo "Usage: $0 [--cmssw CMSSW_BASE] [--target cms|private|generate|plot|all] [--output-dir DIR]"
+            echo "Usage: $0 [--cmssw CMSSW_BASE] [--target cms|private|generate|plot|fragmentation|all] [--output-dir DIR]"
             exit 0
             ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -25,8 +25,9 @@ if [[ ! -d "${CMSSW_PATH}/src" ]]; then
 fi
 if [[ "${TARGET}" != "cms" && "${TARGET}" != "private" && \
       "${TARGET}" != "generate" && "${TARGET}" != "plot" && \
+      "${TARGET}" != "fragmentation" && \
       "${TARGET}" != "all" ]]; then
-    echo "ERROR: target must be cms, private, generate, plot, or all" >&2
+    echo "ERROR: target must be cms, private, generate, plot, fragmentation, or all" >&2
     exit 1
 fi
 
@@ -104,6 +105,20 @@ build_sideband_plot() {
         "${ROOT_LIBS[@]}"
 }
 
+build_fragmentation() {
+    local source_file="${SCRIPT_DIR}/make_fragmentation_function.cpp"
+    local output_file="${OUTPUT_DIR}/make_fragmentation_function"
+    echo "Compiling ${source_file} -> ${output_file}"
+    g++ -std=c++17 -O2 -Wall -Wextra \
+        "${ROOT_CFLAGS[@]}" \
+        "${source_file}" -o "${output_file}" \
+        -L"${TBB_BASE}/lib" -L"${GCC_BASE}/lib64" \
+        -Wl,--disable-new-dtags \
+        -Wl,-rpath,"${ROOT_LIBDIR}" -Wl,-rpath,"${TBB_BASE}/lib" \
+        -Wl,-rpath,"${GCC_BASE}/lib64" \
+        "${ROOT_LIBS[@]}"
+}
+
 if [[ "${TARGET}" == "all" || "${TARGET}" == "cms" ]]; then
     build_one cms
 fi
@@ -116,6 +131,10 @@ fi
 if [[ "${TARGET}" == "all" || "${TARGET}" == "plot" ]]; then
     build_plot
     build_sideband_plot
+fi
+if [[ "${TARGET}" == "all" || "${TARGET}" == "cms" || \
+      "${TARGET}" == "private" || "${TARGET}" == "fragmentation" ]]; then
+    build_fragmentation
 fi
 
 echo "Build complete: ${OUTPUT_DIR}"

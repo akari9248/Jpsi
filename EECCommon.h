@@ -121,6 +121,23 @@ inline int findJpsiJet(const Candidate &candidate, const std::vector<Jet> &jets,
   return -1;
 }
 
+// Light-cone longitudinal momentum fraction used in arXiv:1702.03287:
+// z_h = p^+_{J/psi} / p^+_{jet}, with p^+ = E + p_parallel and the
+// longitudinal axis chosen along the jet direction.
+inline double longitudinalMomentumFraction(const TLorentzVector &particle,
+                                           const TLorentzVector &jet) {
+  if (jet.Vect().Mag2() <= 0.0)
+    return std::numeric_limits<double>::quiet_NaN();
+
+  const double numerator =
+      particle.E() + particle.Vect().Dot(jet.Vect().Unit());
+  const double denominator = jet.E() + jet.P();
+  if (!std::isfinite(numerator) || !std::isfinite(denominator) ||
+      denominator <= 0.0)
+    return std::numeric_limits<double>::quiet_NaN();
+  return numerator / denominator;
+}
+
 inline const std::vector<double> &jpsiPtBinEdges() {
   static const std::vector<double> edges = {0,  2,  4,  6,  8,   12,
                                             16, 20, 30, 50, 100, 200};
@@ -149,6 +166,63 @@ inline std::string jpsiPtSuffix(double pt) {
   return bin < 0 ? "" : jpsiPtBinSuffixes().at(bin);
 }
 
+// Jet-pT bins used for the z = pT(J/psi) / pT(jet) and z_h distributions.
+// The entries are lower bin edges; the final bin has no upper bound.
+inline const std::vector<double> &momentumFractionJetPtBinEdges() {
+  static const std::vector<double> edges = {30.0,  50.0,  100.0, 150.0,
+                                            200.0, 300.0, 400.0, 600.0};
+  return edges;
+}
+
+inline const std::vector<std::string> &momentumFractionJetPtBinSuffixes() {
+  static const std::vector<std::string> suffixes = {
+      "_jetpt_30_50",   "_jetpt_50_100",  "_jetpt_100_150",
+      "_jetpt_150_200", "_jetpt_200_300", "_jetpt_300_400",
+      "_jetpt_400_600", "_jetpt_600_Inf"};
+  return suffixes;
+}
+
+inline int momentumFractionJetPtBin(double pt) {
+  const auto &edges = momentumFractionJetPtBinEdges();
+  if (!std::isfinite(pt) || pt < edges.front())
+    return -1;
+  const auto upper = std::upper_bound(edges.begin(), edges.end(), pt);
+  return std::min(static_cast<int>(upper - edges.begin()) - 1,
+                  static_cast<int>(edges.size()) - 1);
+}
+
+inline std::string momentumFractionJetPtSuffix(double pt) {
+  const int bin = momentumFractionJetPtBin(pt);
+  return bin < 0 ? "" : momentumFractionJetPtBinSuffixes().at(bin);
+}
+
+// Jet-pT intervals used for F^{J/psi}(z_h, pT) in arXiv:1702.03287.
+// The upper edge is exclusive, so a 200 GeV jet is outside these bins.
+inline const std::vector<double> &fragmentationJetPtBinEdges() {
+  static const std::vector<double> edges = {50.0, 100.0, 150.0, 200.0};
+  return edges;
+}
+
+inline const std::vector<std::string> &fragmentationJetPtBinSuffixes() {
+  static const std::vector<std::string> suffixes = {
+      "_jetpt_50_100", "_jetpt_100_150", "_jetpt_150_200"};
+  return suffixes;
+}
+
+inline int fragmentationJetPtBin(double pt) {
+  const auto &edges = fragmentationJetPtBinEdges();
+  if (!std::isfinite(pt) || pt < edges.front() || pt >= edges.back())
+    return -1;
+  return static_cast<int>(std::upper_bound(edges.begin(), edges.end(), pt) -
+                          edges.begin()) -
+         1;
+}
+
+inline std::string fragmentationJetPtSuffix(double pt) {
+  const int bin = fragmentationJetPtBin(pt);
+  return bin < 0 ? "" : fragmentationJetPtBinSuffixes().at(bin);
+}
+
 class Histograms {
 public:
   explicit Histograms(std::string label, const Settings &settings = Settings{})
@@ -168,6 +242,9 @@ public:
                      massHistogramMax);
     jpsiJetPt_ = make("jpsijet_pt", "J/#psi jet p_{T}", 300, 0.0, 600.0);
     zPt_ = make("z_pt", "p_{T}(J/#psi)/p_{T}(jet)", 60, 0.0, 1.2);
+    zH_ = make("z_h", "J/#psi longitudinal momentum fraction;z_{h};weighted "
+                      "J/#psi jets",
+               60, 0.0, 1.2);
     nSelectedJets_ =
         make("n_selected_jets", "selected jet multiplicity", 20, -0.5, 19.5);
     constituentScale_ =
@@ -184,8 +261,29 @@ public:
                massHistogramMax);
       jpsiJetPtBinned_[suffix] =
           make("jpsijet_pt" + suffix, "J/#psi jet p_{T}", 300, 0.0, 600.0);
+    }
+    for (const auto &suffix : momentumFractionJetPtBinSuffixes()) {
       zPtBinned_[suffix] =
           make("z_pt" + suffix, "p_{T}(J/#psi)/p_{T}(jet)", 60, 0.0, 1.2);
+      zHBinned_[suffix] =
+          make("z_h" + suffix,
+               "J/#psi longitudinal momentum fraction;z_{h};weighted J/#psi "
+               "jets",
+               60, 0.0, 1.2);
+    }
+
+    // These are intentionally kept as additive (hadd-safe) ingredients.
+    // make_fragmentation_function converts them to
+    // (1 / N_inclusive-jet) dN_J/psi-jet / dz_h after chunk merging.
+    for (const auto &suffix : fragmentationJetPtBinSuffixes()) {
+      fragmentationNumerator_[suffix] =
+          make("fragmentation_numerator" + suffix,
+               "J/#psi-jet numerator;z_{h};weighted J/#psi jets", 60, 0.0,
+               1.2);
+      inclusiveJetDenominator_[suffix] =
+          make("inclusive_jet_denominator" + suffix,
+               "inclusive-jet denominator;count;weighted jets", 1, 0.5,
+               1.5);
     }
   }
 
@@ -208,15 +306,40 @@ public:
     constituentScale_->Fill(scale, weight);
   }
 
+  void fillInclusiveJet(const Jet &jet, double weight) {
+    const std::string suffix = fragmentationJetPtSuffix(jet.p4.Pt());
+    if (!suffix.empty())
+      inclusiveJetDenominator_.at(suffix)->Fill(1.0, weight);
+  }
+
+  void fillInclusiveJet(double jetPt, double weight) {
+    const std::string suffix = fragmentationJetPtSuffix(jetPt);
+    if (!suffix.empty())
+      inclusiveJetDenominator_.at(suffix)->Fill(1.0, weight);
+  }
+
   void fillJpsiJet(const Candidate &candidate, const Jet &jet, double weight) {
     jpsiJetPt_->Fill(jet.p4.Pt(), weight);
-    const std::string suffix = jpsiPtSuffix(candidate.jpsi.Pt());
-    if (!suffix.empty())
-      jpsiJetPtBinned_.at(suffix)->Fill(jet.p4.Pt(), weight);
+    const std::string jpsiPtSuffixValue = jpsiPtSuffix(candidate.jpsi.Pt());
+    if (!jpsiPtSuffixValue.empty())
+      jpsiJetPtBinned_.at(jpsiPtSuffixValue)->Fill(jet.p4.Pt(), weight);
+    const std::string momentumFractionSuffix =
+        momentumFractionJetPtSuffix(jet.p4.Pt());
     if (jet.p4.Pt() > 0.0) {
-      zPt_->Fill(candidate.jpsi.Pt() / jet.p4.Pt(), weight);
-      if (!suffix.empty())
-        zPtBinned_.at(suffix)->Fill(candidate.jpsi.Pt() / jet.p4.Pt(), weight);
+      const double zPt = candidate.jpsi.Pt() / jet.p4.Pt();
+      zPt_->Fill(zPt, weight);
+      if (!momentumFractionSuffix.empty())
+        zPtBinned_.at(momentumFractionSuffix)->Fill(zPt, weight);
+    }
+    const double zH = longitudinalMomentumFraction(candidate.jpsi, jet.p4);
+    if (std::isfinite(zH)) {
+      zH_->Fill(zH, weight);
+      if (!momentumFractionSuffix.empty())
+        zHBinned_.at(momentumFractionSuffix)->Fill(zH, weight);
+      const std::string jetPtSuffix =
+          fragmentationJetPtSuffix(jet.p4.Pt());
+      if (!jetPtSuffix.empty())
+        fragmentationNumerator_.at(jetPtSuffix)->Fill(zH, weight);
     }
   }
 
@@ -238,16 +361,12 @@ public:
       return false;
 
     eec(scope, "all")->Fill(cosChi, energyWeight);
-    count(scope, "all")->Fill(cosChi, eventWeight);
     const std::string chargeType = particle.charge == 0 ? "neutral" : "charged";
     eec(scope, chargeType)->Fill(cosChi, energyWeight);
-    count(scope, chargeType)->Fill(cosChi, eventWeight);
     const std::string suffix = jpsiPtSuffix(candidate.jpsi.Pt());
     if (!suffix.empty()) {
       eec(scope, "all", suffix)->Fill(cosChi, energyWeight);
-      count(scope, "all", suffix)->Fill(cosChi, eventWeight);
       eec(scope, chargeType, suffix)->Fill(cosChi, energyWeight);
-      count(scope, chargeType, suffix)->Fill(cosChi, eventWeight);
     }
     return true;
   }
@@ -288,34 +407,29 @@ private:
     eec_[key] = make("eec_" + scope + "_" + type + suffix,
                      "energy-weighted EEC;cos#chi;#Sigma E_{i}^{rest}/M", 20,
                      -1.0, 1.0);
-    count_[key] =
-        make("count_" + scope + "_" + type + suffix,
-             "constituent count;cos#chi;weighted constituents", 20, -1.0, 1.0);
   }
 
   TH1D *eec(const std::string &scope, const std::string &type,
             const std::string &suffix = "") {
     return eec_.at(scope + ":" + type + suffix);
   }
-  TH1D *count(const std::string &scope, const std::string &type,
-              const std::string &suffix = "") {
-    return count_.at(scope + ":" + type + suffix);
-  }
-
   std::string label_;
   std::vector<std::unique_ptr<TH1D>> owned_;
   std::map<std::string, TH1D *> eec_;
-  std::map<std::string, TH1D *> count_;
   std::map<std::string, TH1D *> jpsiPtBinned_;
   std::map<std::string, TH1D *> jpsiMassBinned_;
   std::map<std::string, TH1D *> jpsiJetPtBinned_;
   std::map<std::string, TH1D *> zPtBinned_;
+  std::map<std::string, TH1D *> zHBinned_;
+  std::map<std::string, TH1D *> fragmentationNumerator_;
+  std::map<std::string, TH1D *> inclusiveJetDenominator_;
   TH1D *cutflow_ = nullptr;
   TH1D *eventWeight_ = nullptr;
   TH1D *jpsiPt_ = nullptr;
   TH1D *jpsiMass_ = nullptr;
   TH1D *jpsiJetPt_ = nullptr;
   TH1D *zPt_ = nullptr;
+  TH1D *zH_ = nullptr;
   TH1D *nSelectedJets_ = nullptr;
   TH1D *constituentScale_ = nullptr;
 };
