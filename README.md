@@ -165,6 +165,11 @@ mkdir -p private_events
   --level gen --cms-filters off
 ```
 
+The build also refreshes `compile_commands.json` for VS Code/clangd. On a fresh
+checkout, run `./compile.sh --compile-commands-only` to configure C++ editing
+without building executables. See the [tool guide](docs/TOOLS.md) for editor
+tasks and configuration refresh instructions.
+
 Both commands default to jet pT > 30 GeV, |jet eta| < 5, and leading/subleading
 muon pT > 2/2 GeV.
 

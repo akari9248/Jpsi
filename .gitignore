@@ -2,6 +2,7 @@
 /bin/
 /build/
 /generated/
+/compile_commands.json
 logs/
 plots_*/
 *.root

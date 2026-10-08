@@ -1,0 +1,31 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Jpsi: build all",
+            "type": "process",
+            "command": "${workspaceFolder}/compile.sh",
+            "args": ["--target", "all"],
+            "options": {"cwd": "${workspaceFolder}"},
+            "problemMatcher": ["$gcc"],
+            "group": {"kind": "build", "isDefault": true}
+        },
+        {
+            "label": "Jpsi: build CMS",
+            "type": "process",
+            "command": "${workspaceFolder}/compile.sh",
+            "args": ["--target", "cms"],
+            "options": {"cwd": "${workspaceFolder}"},
+            "problemMatcher": ["$gcc"],
+            "group": "build"
+        },
+        {
+            "label": "Jpsi: refresh C++ configuration",
+            "type": "process",
+            "command": "${workspaceFolder}/compile.sh",
+            "args": ["--compile-commands-only"],
+            "options": {"cwd": "${workspaceFolder}"},
+            "problemMatcher": []
+        }
+    ]
+}

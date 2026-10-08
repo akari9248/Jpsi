@@ -6,9 +6,9 @@
     "C_Cpp.formatting": "disabled",
     "C_Cpp.intelliSenseEngine": "disabled",
     "C_Cpp.workspaceParsingPriority": "low",
-    "clangd.path": "/usr/bin/clangd",
+    "clangd.path": "${workspaceFolder}/scripts/clangd.sh",
     "clangd.arguments": [
-        "--compile-commands-dir=/afs/cern.ch/user/s/shuangyu/CMSSW_15_0_14/src",
+        "--compile-commands-dir=${workspaceFolder}",
         "--query-driver=/cvmfs/**,/usr/**",
         "--header-insertion=never",
         "--background-index=false",
@@ -26,7 +26,10 @@
         "**/*.h": true
     },
     "files.watcherExclude": {
-    "**/*": true
+        "**/archive/**": true,
+        "**/bin/**": true,
+        "**/generated/**": true,
+        "**/.git/**": true
     },
     "files.associations": {
         "*.cpp": "cpp",

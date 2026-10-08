@@ -13,6 +13,25 @@ The build initializes the requested CMSSW release and puts executables in
 `bin/`. Use `--cmssw /path/to/CMSSW` to select a release or `--output-dir DIR`
 to choose another binary directory. Existing binaries are local artifacts.
 
+Each build generates a project-local `compile_commands.json` for all eight
+active C++ sources using the actual CMSSW compiler and include flags. The
+database is a generated local file ignored by Git; it replaces the old symlink
+to the shared CMSSW database, which had no entries for this project.
+
+To refresh editor configuration without compiling binaries, run:
+
+```bash
+./compile.sh --compile-commands-only
+```
+
+VS Code's clangd and C/C++ configuration read this database from the workspace
+root. `scripts/clangd.sh` initializes the CMSSW runtime before launching clangd
+so its compiler queries can load the required GCC libraries. Open this
+directory as the workspace. After changing the configuration,
+run **clangd: Restart language server** from the Command Palette, or reload the
+window. `Ctrl+Shift+B` runs the full project build; the task list also provides
+a CMS-only build and **Jpsi: refresh C++ configuration**.
+
 | Target | Source files | Executables |
 | --- | --- | --- |
 | `cms` | `src/analysis/eec_cms.cpp`, fragmentation postprocessor | `eec_cms`, `make_fragmentation_function` |
