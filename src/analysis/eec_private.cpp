@@ -1,6 +1,6 @@
 #include "EECCommon.h"
-#include "include/CharmoniumInfoPrivate.h"
-#include "include/MotherCategory.h"
+#include "CharmoniumInfoPrivate.h"
+#include "MotherCategory.h"
 
 #include <TChain.h>
 #include <TFile.h>
@@ -38,8 +38,8 @@ constexpr double tagPionPtMin = 0.4;
 constexpr double tagAbsEtaMax = 2.5;
 constexpr double chiDeltaMMin = 0.38;
 constexpr double chiDeltaMMax = 0.50;
-constexpr double psi2SDeltaMMin = 0.55;
-constexpr double psi2SDeltaMMax = 0.63;
+constexpr double psi2SDeltaMMin = 0.579;
+constexpr double psi2SDeltaMMax = 0.599;
 
 void usage(const char *program) {
   std::cerr
@@ -103,8 +103,6 @@ enum PrivateFeeddownTag { kUntagged = 0, kChiC = 1, kPsi2S = 2 };
 
 struct FeeddownTagResult {
   int tag = kUntagged;
-  double bestChiDeltaM = -1.0;
-  double bestPsi2SDeltaM = -1.0;
 };
 
 TLorentzVector stableParticle(const CharmoniumInfo &event, std::size_t index) {
@@ -142,15 +140,13 @@ FeeddownTagResult reconstructFeeddown(const CharmoniumInfo &event,
         std::abs(event.hadron_eta->at(i)) <= tagAbsEtaMax) {
       const double deltaM =
           (candidate.jpsi + particle).M() - candidate.jpsi.M();
-      const double pull = normalizedMassPull(
-          deltaM, chiCenter, chiDeltaMMin, chiDeltaMMax);
+      const double pull =
+          normalizedMassPull(deltaM, chiCenter, chiDeltaMMin, chiDeltaMMax);
       if (pull < bestChiPull) {
         bestChiPull = pull;
-        result.bestChiDeltaM = deltaM;
       }
     }
-    if (std::abs(pdgId) != 211 ||
-        event.hadron_pt->at(i) < tagPionPtMin ||
+    if (std::abs(pdgId) != 211 || event.hadron_pt->at(i) < tagPionPtMin ||
         std::abs(event.hadron_eta->at(i)) > tagAbsEtaMax)
       continue;
     (pdgId > 0 ? positivePions : negativePions).push_back(i);
@@ -158,16 +154,13 @@ FeeddownTagResult reconstructFeeddown(const CharmoniumInfo &event,
 
   for (const std::size_t positive : positivePions)
     for (const std::size_t negative : negativePions) {
-      const double deltaM =
-          (candidate.jpsi + stableParticle(event, positive) +
-           stableParticle(event, negative))
-              .M() -
-          candidate.jpsi.M();
-      const double pull = normalizedMassPull(
-          deltaM, psi2SCenter, psi2SDeltaMMin, psi2SDeltaMMax);
+      const TLorentzVector dipion = stableParticle(event, positive) +
+                                    stableParticle(event, negative);
+      const double deltaM = (candidate.jpsi + dipion).M() - candidate.jpsi.M();
+      const double pull = normalizedMassPull(deltaM, psi2SCenter,
+                                             psi2SDeltaMMin, psi2SDeltaMMax);
       if (pull < bestPsi2SPull) {
         bestPsi2SPull = pull;
-        result.bestPsi2SDeltaM = deltaM;
       }
     }
 
@@ -185,8 +178,7 @@ FeeddownTagResult reconstructFeeddown(const CharmoniumInfo &event,
 bool isBOrigin(const CharmoniumInfo &event) {
   const int category = jpsi_origin::category(event.mother_pdgid);
   return category == 1 ||
-         (category == 2 &&
-          jpsi_origin::isBHadron(event.grandmother_pdgid));
+         (category == 2 && jpsi_origin::isBHadron(event.grandmother_pdgid));
 }
 
 int truthFeeddownLabel(const CharmoniumInfo &event) {
@@ -323,20 +315,13 @@ int main(int argc, char **argv) {
     for (std::size_t tag = 0; tag < feeddownTagHistograms.size(); ++tag)
       feeddownTagHistograms[tag] =
           std::make_unique<Histograms>(feeddownTagNames[tag]);
-    TH1D bestChiDeltaM("private_feeddown_tag_best_chi_delta_m",
-                       ";best M(J/#psi#gamma)-M(J/#psi) [GeV];Events", 120,
-                       0.0, 1.2);
-    TH1D bestPsi2SDeltaM(
-        "private_feeddown_tag_best_psi2s_delta_m",
-        ";best M(J/#psi#pi^{+}#pi^{-})-M(J/#psi) [GeV];Events", 120, 0.3,
-        0.9);
     TH2D migration("private_feeddown_tag_migration",
                    ";Private feed-down tag;Truth origin;Weighted events", 3,
                    -0.5, 2.5, 5, -0.5, 4.5);
     TH2D migrationUnweighted(
         "private_feeddown_tag_migration_unweighted",
-        ";Private feed-down tag;Truth origin;Unweighted events", 3, -0.5,
-        2.5, 5, -0.5, 4.5);
+        ";Private feed-down tag;Truth origin;Unweighted events", 3, -0.5, 2.5,
+        5, -0.5, 4.5);
     TH1D originBeforeBVeto(
         "private_feeddown_tag_origin_before_b_veto",
         ";Truth origin before feed-down B veto;Weighted selected events", 2,
@@ -369,8 +354,8 @@ int main(int argc, char **argv) {
          ++category) {
       if (category == 0 || category == 2)
         continue; // Cat0 is empty; cat2 is reconstructed from its components.
-      sourceHistograms.at(category) = std::make_unique<Histograms>(
-          jpsi_origin::directoryName(category));
+      sourceHistograms.at(category) =
+          std::make_unique<Histograms>(jpsi_origin::directoryName(category));
     }
     std::array<std::unique_ptr<Histograms>,
                jpsi_origin::numberOfCharmoniumComponents()>
@@ -424,13 +409,10 @@ int main(int argc, char **argv) {
         if (!unified_eec::candidatePassesKinematics(candidate,
                                                     options.settings))
           continue;
-        if (runFeeddownTagger && feeddownTag.bestChiDeltaM >= 0.0)
-          bestChiDeltaM.Fill(feeddownTag.bestChiDeltaM, weight);
-        if (runFeeddownTagger && feeddownTag.bestPsi2SDeltaM >= 0.0)
-          bestPsi2SDeltaM.Fill(feeddownTag.bestPsi2SDeltaM, weight);
-
         const auto jets = buildJets(event, options.settings, histograms, weight,
                                     subHistograms);
+        if (!unified_eec::passesDijetSelection(jets, options.settings))
+          continue;
         for (const auto &jet : jets) {
           histograms.fillInclusiveJet(jet, weight);
           for (Histograms *subHistogram : subHistograms)
@@ -445,9 +427,9 @@ int main(int argc, char **argv) {
           originBeforeBVeto.Fill(bOrigin ? 0 : 1, weight);
           originBeforeBVetoUnweighted.Fill(bOrigin ? 0 : 1);
           if (runFeeddownTagger) {
-            migration.Fill(feeddownTag.tag, truthFeeddownLabel(event), weight);
-            migrationUnweighted.Fill(feeddownTag.tag,
-                                     truthFeeddownLabel(event));
+            const int truthLabel = truthFeeddownLabel(event);
+            migration.Fill(feeddownTag.tag, truthLabel, weight);
+            migrationUnweighted.Fill(feeddownTag.tag, truthLabel);
           }
           ++accepted;
         }
@@ -469,12 +451,11 @@ int main(int argc, char **argv) {
       tagged->write(*output);
     output->mkdir("PrivateFeeddownTagDiagnostics");
     output->cd("PrivateFeeddownTagDiagnostics");
-    bestChiDeltaM.Write();
-    bestPsi2SDeltaM.Write();
     migration.Write();
     migrationUnweighted.Write();
     originBeforeBVeto.Write();
     originBeforeBVetoUnweighted.Write();
+    histograms.printJpsiJetFractions(std::cout);
     output->Close();
     std::cout << "Processed " << processed << ", accepted " << accepted
               << ", wrote " << outputName << '\n';

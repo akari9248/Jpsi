@@ -1,5 +1,5 @@
 #include "EECCommon.h"
-#include "include/MotherCategory.h"
+#include "MotherCategory.h"
 
 #include <TCanvas.h>
 #include <TColor.h>
@@ -15,6 +15,7 @@
 #include <TSystem.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
@@ -28,9 +29,9 @@
 namespace {
 
 struct Options {
-  std::string cmsDirectory = "/eos/user/s/shuangyu/public/Jpsi/eec_unified_cms";
+  std::string cmsDirectory = "/eos/user/s/shuangyu/public/Jpsi/eec_cms";
   std::string privateDirectory =
-      "/eos/user/s/shuangyu/public/Jpsi/eec_private_feeddown";
+      "/eos/user/s/shuangyu/public/Jpsi/eec_private";
   std::string outputDirectory = "plots_eec_cms_private";
   bool drawPositiveHalf = true;
   bool drawCms = true;
@@ -53,6 +54,7 @@ struct ComparisonStyle {
   bool positiveHalf = false;
   bool logY = true;
   bool logRatio = false;
+  bool legendInsidePlot = false;
   int rebin = 1;
   bool fixedRatioRange = false;
   double ratioMinimum = 0.5;
@@ -70,9 +72,9 @@ void drawNdcTitle(const std::string &title, double x, double y) {
   TLatex label;
   label.SetNDC();
   label.SetTextFont(42);
-  label.SetTextAlign(13);
-  label.SetTextSize(title.size() > 85 ? 0.030
-                                     : (title.size() > 65 ? 0.034 : 0.040));
+  label.SetTextAlign(23);
+  label.SetTextSize(title.size() > 85 ? 0.036
+                                     : (title.size() > 65 ? 0.042 : 0.050));
   label.DrawLatex(x, y, title.c_str());
 }
 
@@ -139,13 +141,36 @@ std::unique_ptr<TH1D> loadAndAdd(const Sample &sample,
     const std::string path = source.directory + "/" + histogramName;
     TH1D *input = nullptr;
     file.GetObject(path.c_str(), input);
-    if (!input)
+    auto addInput = [&](TH1D *histogram, const std::string &inputPath) {
+      if (!histogram)
+        throw std::runtime_error("missing " + inputPath + " in " + source.file);
+      if (!result) {
+        result.reset(static_cast<TH1D *>(histogram->Clone(cloneName.c_str())));
+        result->SetDirectory(nullptr);
+      } else if (!result->Add(histogram)) {
+        throw std::runtime_error("incompatible histogram " + inputPath);
+      }
+    };
+    if (input) {
+      addInput(input, path);
+      continue;
+    }
+
+    // Existing ROOT files store the 0-12 GeV range as five smaller bins.
+    const std::string mergedSuffix = "_jpsipt_0_12";
+    if (histogramName.size() < mergedSuffix.size() ||
+        histogramName.compare(histogramName.size() - mergedSuffix.size(),
+                              mergedSuffix.size(), mergedSuffix) != 0)
       throw std::runtime_error("missing " + path + " in " + source.file);
-    if (!result) {
-      result.reset(static_cast<TH1D *>(input->Clone(cloneName.c_str())));
-      result->SetDirectory(nullptr);
-    } else if (!result->Add(input)) {
-      throw std::runtime_error("incompatible histogram " + path);
+    const std::string stem = histogramName.substr(
+        0, histogramName.size() - mergedSuffix.size());
+    for (const char *oldSuffix : {"_jpsipt_0_2", "_jpsipt_2_4",
+                                         "_jpsipt_4_6", "_jpsipt_6_8",
+                                         "_jpsipt_8_12"}) {
+      const std::string oldPath = source.directory + "/" + stem + oldSuffix;
+      TH1D *oldInput = nullptr;
+      file.GetObject(oldPath.c_str(), oldInput);
+      addInput(oldInput, oldPath);
     }
   }
   return result;
@@ -214,33 +239,65 @@ void drawComparison(std::vector<std::unique_ptr<TH1D>> input,
     prepareShape(*histogram, style.positiveHalf);
   }
 
-  const std::vector<int> colors = {kBlack,     kAzure + 1,   kRed + 1,
-                                   kGreen + 2, kMagenta + 1, kOrange + 7};
-  const std::vector<int> markers = {20, 21, 22, 23, 33, 34};
+  const std::vector<int> colors = {
+      TColor::GetColor("#292929"),  // charcoal
+      TColor::GetColor("#1683FF"),  // bright blue
+      TColor::GetColor("#00B86B"),  // bright green
+      TColor::GetColor("#FF8A00"),  // orange
+      TColor::GetColor("#C83EFF"),  // violet
+      TColor::GetColor("#F43F5E"),  // rose
+      TColor::GetColor("#00B8D9"),  // cyan
+      TColor::GetColor("#B89F00"),  // ochre
+      TColor::GetColor("#748096")}; // slate
+  const std::vector<int> markers = {20, 21, 22, 23, 33, 34, 25, 26, 27};
+  const auto colorForCurve = [&](std::size_t index) {
+    const auto &label = labels[index];
+    if (label == "b-hadron")
+      return colors[0];
+    if (label == "b-hadron charmonium")
+      return colors[1];
+    if (label == "non-B charmonium")
+      return colors[2];
+    if (label == "quark")
+      return colors[3];
+    if (label == "octet")
+      return colors[4];
+    return colors[index % colors.size()];
+  };
   double maximum = 0.0;
   double minimumPositive = std::numeric_limits<double>::max();
   for (std::size_t index = 0; index < input.size(); ++index) {
     auto &histogram = *input[index];
-    histogram.SetLineColor(colors[index % colors.size()]);
-    histogram.SetMarkerColor(colors[index % colors.size()]);
+    const int color = colorForCurve(index);
+    histogram.SetLineColor(color);
+    histogram.SetMarkerColor(color);
     histogram.SetMarkerStyle(markers[index % markers.size()]);
-    histogram.SetMarkerSize(1.0);
-    histogram.SetLineWidth(2);
-    maximum = std::max(maximum, histogram.GetMaximum());
+    histogram.SetMarkerSize(1.15);
+    histogram.SetLineWidth(3);
     for (int bin = 1; bin <= histogram.GetNbinsX(); ++bin) {
       const double content = histogram.GetBinContent(bin);
-      if (content > 0.0)
-        minimumPositive = std::min(minimumPositive, content);
+      const double error = histogram.GetBinError(bin);
+      if (!std::isfinite(content) || !std::isfinite(error))
+        continue;
+      maximum = std::max(maximum, content + error);
+      if (content > 0.0) {
+        const double lowerEdge = content - error;
+        minimumPositive =
+            std::min(minimumPositive, lowerEdge > 0.0 ? lowerEdge : content);
+      }
     }
   }
 
-  TCanvas canvas("eec_canvas", "eec_canvas", 950, 900);
+  const bool compactLegend = input.size() >= 6;
+  TCanvas canvas("eec_canvas", "eec_canvas",
+                 compactLegend ? 1000 : 950, compactLegend ? 1000 : 900);
   TPad upper("upper", "upper", 0.0, 0.30, 1.0, 1.0);
   TPad lower("lower", "lower", 0.0, 0.0, 1.0, 0.30);
   upper.SetBottomMargin(0.025);
   upper.SetLeftMargin(0.14);
   upper.SetRightMargin(0.04);
-  upper.SetTopMargin(0.13);
+  upper.SetTopMargin(style.legendInsidePlot ? 0.13
+                                           : (compactLegend ? 0.25 : 0.13));
   upper.SetLogy(style.logY);
   lower.SetTopMargin(0.035);
   lower.SetBottomMargin(0.32);
@@ -258,7 +315,8 @@ void drawComparison(std::vector<std::unique_ptr<TH1D>> input,
   input.front()->GetYaxis()->SetLabelSize(0.048);
   input.front()->GetXaxis()->SetLabelSize(0.0);
   if (style.logY) {
-    input.front()->SetMinimum(std::max(1e-8, minimumPositive * 0.35));
+    input.front()->SetMinimum(
+        std::max(std::numeric_limits<double>::min(), minimumPositive * 0.35));
     input.front()->SetMaximum(maximum * 6.0);
   } else {
     input.front()->SetMinimum(0.0);
@@ -269,12 +327,21 @@ void drawComparison(std::vector<std::unique_ptr<TH1D>> input,
   input.front()->Draw("E1");
   for (std::size_t index = 1; index < input.size(); ++index)
     input[index]->Draw("E1 SAME");
-  drawNdcTitle(title, 0.14, 0.965);
+  drawNdcTitle(title, 0.50, 0.965);
 
-  TLegend legend(0.38, 0.60, 0.94, 0.86);
+  TLegend legend(compactLegend ? (style.legendInsidePlot ? 0.20 : 0.15)
+                                : 0.38,
+                 compactLegend ? (style.legendInsidePlot ? 0.60 : 0.78)
+                               : 0.86 - 0.065 * input.size(),
+                 compactLegend && style.legendInsidePlot ? 0.96 : 0.94,
+                 compactLegend ? (style.legendInsidePlot ? 0.85 : 0.91)
+                               : 0.86);
   legend.SetBorderSize(0);
   legend.SetFillStyle(0);
-  legend.SetTextSize(0.047);
+  legend.SetNColumns(compactLegend ? 2 : 1);
+  legend.SetTextSize(compactLegend ? 0.040 : 0.056);
+  if (compactLegend)
+    legend.SetMargin(0.15);
   for (std::size_t index = 0; index < input.size(); ++index)
     legend.AddEntry(input[index].get(), labels[index].c_str(), "lep");
   legend.Draw();
@@ -376,6 +443,7 @@ void drawCategoryFractions(const std::vector<Sample> &samples,
 
   std::vector<std::vector<double>> fractions(
       categories.size(), std::vector<double>(samples.size(), 0.0));
+  std::vector<long long> totalJpsiCounts(samples.size(), 0);
   std::vector<bool> hasSelectedEvents(samples.size(), false);
 
   std::cout << "Category fractions among selected J/psi-jet events in "
@@ -392,6 +460,11 @@ void drawCategoryFractions(const std::vector<Sample> &samples,
           categorySample, histogramName,
           "category_yield_" + std::to_string(sampleIndex) + "_" +
               std::to_string(category));
+      const double entries = selectedEvents->GetEntries();
+      if (!std::isfinite(entries) || entries < 0.0)
+        throw std::runtime_error("invalid J/psi count in " +
+                                 samples[sampleIndex].label);
+      totalJpsiCounts[sampleIndex] += std::llround(entries);
       // Include underflow and overflow so that the open-ended >=200 GeV bin
       // is counted even though the stored J/psi-pT histogram ends at 200 GeV.
       yields[category] = selectedEvents->Integral(
@@ -401,7 +474,8 @@ void drawCategoryFractions(const std::vector<Sample> &samples,
                                  samples[sampleIndex].label);
       total += yields[category];
     }
-    std::cout << "  " << samples[sampleIndex].label;
+    std::cout << "  " << samples[sampleIndex].label
+              << "  N_Jpsi=" << totalJpsiCounts[sampleIndex];
     if (!(total > 0.0)) {
       std::cout << "  no selected events\n";
       continue;
@@ -454,12 +528,28 @@ void drawCategoryFractions(const std::vector<Sample> &samples,
   stack.GetXaxis()->SetLabelSize(0.042);
   stack.GetXaxis()->LabelsOption("h");
   stack.GetXaxis()->CenterTitle();
-  drawNdcTitle(title, 0.12, 0.965);
+  drawNdcTitle(title, 0.50, 0.965);
 
-  TLegend legend(0.68, 0.45, 0.99, 0.86);
+  TLatex sampleCounts;
+  sampleCounts.SetNDC();
+  sampleCounts.SetTextFont(42);
+  sampleCounts.SetTextAlign(22);
+  sampleCounts.SetTextSize(0.025);
+  const double plotWidth = 1.0 - canvas.GetLeftMargin() -
+                           canvas.GetRightMargin();
+  for (std::size_t sampleIndex = 0; sampleIndex < samples.size();
+       ++sampleIndex) {
+    const double x = canvas.GetLeftMargin() +
+                     plotWidth * (sampleIndex + 0.5) / samples.size();
+    sampleCounts.DrawLatex(
+        x, 0.89,
+        ("N_{J/#psi}=" + std::to_string(totalJpsiCounts[sampleIndex])).c_str());
+  }
+
+  TLegend legend(0.67, 0.45, 0.99, 0.86);
   legend.SetBorderSize(0);
   legend.SetFillStyle(0);
-  legend.SetTextSize(0.033);
+  legend.SetTextSize(0.040);
   for (std::size_t category = 0; category < categories.size(); ++category)
     legend.AddEntry(histograms[category].get(),
                     categories[category].label.c_str(), "f");
@@ -559,35 +649,65 @@ LoadedComparison loadForComparison(const std::vector<Sample> &samples,
   return loaded;
 }
 
+std::vector<std::string> octetDirectories() {
+  return {"PrivateGen_cat5", "PrivateGen_cat6", "PrivateGen_cat7"};
+}
+
+std::vector<std::string> genuineCharmoniumDirectories() {
+  std::vector<std::string> result;
+  for (int component = 1;
+       component < jpsi_origin::numberOfCharmoniumComponents(); ++component)
+    result.push_back(
+        jpsi_origin::charmoniumComponentDirectoryName(component));
+  return result;
+}
+
+std::vector<FractionCategory> privateDetailedCategories() {
+  return {
+      {"b_hadron", "b-hadron", {"PrivateGen_cat1"}, kAzure + 1},
+      {"charmonium_from_b", "b-hadron charmonium",
+       {jpsi_origin::charmoniumComponentDirectoryName(0)},
+       TColor::GetColor("#8C564B")},
+      {"charmonium_psi_2s", "#psi(2S)",
+       {jpsi_origin::charmoniumComponentDirectoryName(1)}, kOrange + 7},
+      {"charmonium_chi_c1", "#chi_{c1}",
+       {jpsi_origin::charmoniumComponentDirectoryName(2)}, kRed + 1},
+      {"charmonium_chi_c2", "#chi_{c2}",
+       {jpsi_origin::charmoniumComponentDirectoryName(3)}, kMagenta + 1},
+      {"quark", "quark", {"PrivateGen_cat4"}, kViolet + 1},
+      {"octet", "octet", octetDirectories(), kCyan + 2}};
+}
+
+std::vector<FractionCategory> privateComparisonCategories() {
+  return {
+      {"b_hadron", "b-hadron", {"PrivateGen_cat1"}, kAzure + 1},
+      {"charmonium_from_b", "b-hadron charmonium",
+       {jpsi_origin::charmoniumComponentDirectoryName(0)},
+       TColor::GetColor("#8C564B")},
+      {"non_b_charmonium", "non-B charmonium",
+       genuineCharmoniumDirectories(), kOrange + 7},
+      {"quark", "quark", {"PrivateGen_cat4"}, kViolet + 1},
+      {"octet", "octet", octetDirectories(), kCyan + 2}};
+}
+
 void drawCategoryFractionFamily(const std::vector<Sample> &samples,
                                 const std::vector<std::string> &axisLabels,
                                 const std::string &outputDirectory) {
-  const std::vector<int> categoryIds = {1, 2, 3, 4, 5, 6, 7};
-  const std::vector<std::string> labels = {
-      "b-hadron", "Charmonium feed-down", "Gluon/proton", "Quark",
-      "^{3}S_{1}^{[8]}", "^{1}S_{0}^{[8]}", "^{3}P_{J}^{[8]}"};
-  const std::vector<int> colors = {
-      kAzure + 1, kOrange + 7, kGreen + 2, kViolet + 1,
-      kRed + 1,   kMagenta + 1, kCyan + 2};
-  std::vector<FractionCategory> categories;
-  for (std::size_t index = 0; index < categoryIds.size(); ++index) {
-    const int category = categoryIds[index];
-    std::vector<std::string> directories;
-    if (category == 2) {
-      for (int component = 0;
-           component < jpsi_origin::numberOfCharmoniumComponents(); ++component)
-        directories.push_back(
-            jpsi_origin::charmoniumComponentDirectoryName(component));
-    } else
-      directories.push_back("PrivateGen_cat" + std::to_string(category));
-    categories.push_back({"cat" + std::to_string(category), labels[index],
-                          std::move(directories), colors[index]});
-  }
+  const std::vector<FractionCategory> categories = {
+      {"b_hadron", "b-hadron", {"PrivateGen_cat1"}, kAzure + 1},
+      {"b_charmonium", "b-hadron charmonium",
+       {jpsi_origin::charmoniumComponentDirectoryName(0)},
+       TColor::GetColor("#8C564B")},
+      {"non_b_charmonium", "non-B charmonium",
+       genuineCharmoniumDirectories(), kOrange + 7},
+      {"gluon_proton", "gluon/proton", {"PrivateGen_cat3"}, kGreen + 2},
+      {"quark", "quark", {"PrivateGen_cat4"}, kViolet + 1},
+      {"octet", "octet", octetDirectories(), kCyan + 2}};
   for (const auto &suffix : allPtSuffixes()) {
     try {
       drawCategoryFractions(
           samples, axisLabels, categories, "jpsi_pt" + suffix,
-          "Private-sample category composition, " + ptDescription(suffix),
+          "Source fractions, " + ptDescription(suffix),
           outputDirectory + "/private_category_fractions" + suffix + ".pdf");
     } catch (const std::exception &error) {
       std::cerr << "SKIP private_category_fractions" << suffix << ": "
@@ -596,27 +716,44 @@ void drawCategoryFractionFamily(const std::vector<Sample> &samples,
   }
 }
 
-void drawCharmoniumFractionFamily(const std::vector<Sample> &samples,
-                                  const std::vector<std::string> &axisLabels,
-                                  const std::string &outputDirectory) {
+void drawOctetFractionFamily(const std::vector<Sample> &samples,
+                             const std::vector<std::string> &axisLabels,
+                             const std::string &outputDirectory) {
   const std::vector<FractionCategory> categories = {
-      {"from_b", "b-hadron feed-down",
-       {jpsi_origin::charmoniumComponentDirectoryName(0)},
-       TColor::GetColor("#8C564B")},
+      {"3s1", "^{3}S_{1}^{[8]}", {"PrivateGen_cat5"}, kRed + 1},
+      {"1s0", "^{1}S_{0}^{[8]}", {"PrivateGen_cat6"}, kMagenta + 1},
+      {"3pj", "^{3}P_{J}^{[8]}", {"PrivateGen_cat7"}, kCyan + 2}};
+  for (const auto &suffix : allPtSuffixes()) {
+    try {
+      drawCategoryFractions(
+          samples, axisLabels, categories, "jpsi_pt" + suffix,
+          "Octet fractions, " + ptDescription(suffix),
+          outputDirectory + "/private_octet_fractions" + suffix + ".pdf");
+    } catch (const std::exception &error) {
+      std::cerr << "SKIP private_octet_fractions" << suffix << ": "
+                << error.what() << '\n';
+    }
+  }
+}
+
+void drawNonBCharmoniumFractionFamily(
+    const std::vector<Sample> &samples,
+    const std::vector<std::string> &axisLabels,
+    const std::string &outputDirectory) {
+  const std::vector<FractionCategory> categories = {
       {"psi_2S", "#psi(2S)",
        {jpsi_origin::charmoniumComponentDirectoryName(1)}, kAzure + 1},
       {"chi_c1", "#chi_{c1}",
        {jpsi_origin::charmoniumComponentDirectoryName(2)}, kOrange + 7},
       {"chi_c2", "#chi_{c2}",
        {jpsi_origin::charmoniumComponentDirectoryName(3)}, kRed + 1},
-      {"others", "Other charmonium",
+      {"others", "other charmonium",
        {jpsi_origin::charmoniumComponentDirectoryName(4)}, kGray + 1}};
-
   for (const auto &suffix : allPtSuffixes()) {
     try {
       drawCategoryFractions(
           samples, axisLabels, categories, "jpsi_pt" + suffix,
-          "Charmonium feed-down composition, " + ptDescription(suffix),
+          "Non-B charmonium fractions, " + ptDescription(suffix),
           outputDirectory + "/private_charmonium_fractions" + suffix +
               ".pdf");
     } catch (const std::exception &error) {
@@ -630,9 +767,10 @@ void drawFamily(const std::vector<Sample> &samples,
                 const std::string &outputPrefix,
                 const std::string &descriptionPrefix,
                 const std::string &outputDirectory, bool positiveHalf,
-                bool omitEmpty = false) {
+                bool omitEmpty = false, bool legendInsidePlot = false) {
   ComparisonStyle fullStyle;
   fullStyle.rebin = 2;
+  fullStyle.legendInsidePlot = legendInsidePlot;
   for (const auto &suffix : allPtSuffixes()) {
     const std::string histogramName = "eec_alljets_all" + suffix;
     try {
@@ -673,8 +811,10 @@ void drawObservableFamily(const std::vector<Sample> &samples,
                           const std::string &outputPrefix,
                           const std::string &descriptionPrefix,
                           const std::string &xAxisTitle,
-                          const std::string &outputDirectory) {
+                          const std::string &outputDirectory,
+                          bool legendInsidePlot = false) {
   ComparisonStyle style;
+  style.legendInsidePlot = legendInsidePlot;
   style.xAxisTitle = xAxisTitle;
   style.yAxisTitle = "Normalized J/#psi jets";
   style.logY = false;
@@ -696,29 +836,78 @@ void drawObservableFamily(const std::vector<Sample> &samples,
   }
 }
 
-std::vector<Sample> privateCategorySamples(const std::string &file) {
-  Sample charmonium{"charmonium feed-down", {}};
-  for (int component = 0;
-       component < jpsi_origin::numberOfCharmoniumComponents(); ++component)
-    charmonium.sources.push_back(
-        {file, jpsi_origin::charmoniumComponentDirectoryName(component)});
-  return {{"b-hadron", {{file, "PrivateGen_cat1"}}},
-          std::move(charmonium),
-          {"gluon/proton", {{file, "PrivateGen_cat3"}}},
-          {"quark", {{file, "PrivateGen_cat4"}}},
-          {"Octet (^{3}S_{1}^{[8]}+^{1}S_{0}^{[8]}+^{3}P_{J}^{[8]})",
-           {{file, "PrivateGen_cat5"},
-            {file, "PrivateGen_cat6"},
-            {file, "PrivateGen_cat7"}}}};
+void drawCategoryZFamily(const std::vector<Sample> &samples,
+                         const std::string &histogramPrefix,
+                         const std::string &outputPrefix,
+                         const std::string &description,
+                         const std::string &xAxisTitle,
+                         const std::string &outputDirectory) {
+  ComparisonStyle style;
+  style.xAxisTitle = xAxisTitle;
+  style.yAxisTitle = "Normalized J/#psi jets";
+  style.logY = false;
+  style.rebin = 4;
+  style.fixedRatioRange = true;
+  style.ratioMinimum = 0.0;
+  style.ratioMaximum = 2.0;
+  for (const auto &suffix : allMomentumFractionJetPtSuffixes()) {
+    try {
+      auto loaded = loadForComparison(
+          samples, histogramPrefix + suffix,
+          outputPrefix + suffix + "_", false, true);
+      if (loaded.first.size() < 2)
+        throw std::runtime_error("fewer than two non-empty categories");
+      drawComparison(std::move(loaded.first), loaded.second,
+                     description + ", " + jetPtDescription(suffix),
+                     outputDirectory + "/" + outputPrefix + suffix + ".pdf",
+                     style);
+    } catch (const std::exception &error) {
+      std::cerr << "SKIP " << outputPrefix << suffix << ": " << error.what()
+                << '\n';
+    }
+  }
 }
 
-std::vector<std::string> charmoniumComponentDirectories() {
-  std::vector<std::string> result;
-  for (int component = 0;
-       component < jpsi_origin::numberOfCharmoniumComponents(); ++component)
-    result.push_back(
-        jpsi_origin::charmoniumComponentDirectoryName(component));
-  return result;
+std::vector<Sample> privateCategorySamples(
+    const std::string &file, const std::vector<std::string> &allowedKeys = {}) {
+  std::vector<Sample> samples;
+  for (const auto &category : privateComparisonCategories()) {
+    if (!allowedKeys.empty() &&
+        std::find(allowedKeys.begin(), allowedKeys.end(), category.key) ==
+            allowedKeys.end())
+      continue;
+    Sample sample{category.label, {}};
+    for (const auto &directory : category.directories)
+      sample.sources.push_back({file, directory});
+    samples.push_back(std::move(sample));
+  }
+  return samples;
+}
+
+std::vector<Sample> privateNonBCharmoniumSamples(const std::string &file) {
+  const std::vector<std::string> labels = {
+      "#psi(2S)", "#chi_{c1}", "#chi_{c2}"};
+  std::vector<Sample> samples;
+  for (int component = 1; component <= 3; ++component)
+    samples.push_back(
+        {labels.at(component - 1),
+         {{file, jpsi_origin::charmoniumComponentDirectoryName(component)}}});
+  return samples;
+}
+
+std::vector<Sample> privateSamplesWithCategory(
+    const std::vector<Sample> &samples,
+    const std::vector<std::vector<std::string>> &categoryKeysBySample,
+    const std::string &categoryKey) {
+  std::vector<Sample> selected;
+  for (std::size_t index = 0; index < samples.size(); ++index) {
+    const auto &allowedKeys = categoryKeysBySample.at(index);
+    if (allowedKeys.empty() ||
+        std::find(allowedKeys.begin(), allowedKeys.end(), categoryKey) !=
+            allowedKeys.end())
+      selected.push_back(samples[index]);
+  }
+  return selected;
 }
 
 std::vector<Sample>
@@ -809,7 +998,7 @@ void drawPrivateFeeddownTagDiagnostics(
     canvas.SetBottomMargin(0.15);
     canvas.SetTopMargin(0.13);
     migration.Draw("COLZ TEXT");
-    drawNdcTitle(title, 0.25, 0.965);
+    drawNdcTitle(title, 0.50, 0.965);
     canvas.SaveAs(output.c_str());
   };
 
@@ -854,6 +1043,7 @@ void drawPrivateFeeddownTagDiagnostics(
         outputDirectory +
             "/private_feeddown_tag_migration_vertical_normalized_" +
             diagnostic.key + ".pdf");
+
   }
 
   TH2D summary("private_feeddown_tag_metric_summary", "",
@@ -887,7 +1077,7 @@ void drawPrivateFeeddownTagDiagnostics(
   summaryCanvas.SetBottomMargin(0.15);
   summaryCanvas.SetTopMargin(0.13);
   summary.Draw("COLZ TEXT");
-  drawNdcTitle("Private feed-down tag performance", 0.25, 0.965);
+  drawNdcTitle("Private feed-down tag performance", 0.50, 0.965);
   summaryCanvas.SaveAs(
       (outputDirectory + "/private_feeddown_tag_metrics.pdf").c_str());
 }
@@ -926,14 +1116,21 @@ int main(int argc, char **argv) {
          {{path(cms, "JPsiMuMu_Fil-JPsiNo-2MuPtEta_TuneCP5_13p6TeV_pythia8-"
                      "evtgen-RunIIISummer24.root"),
            "CmsReco"}}},
-        {"Hard QCD, onia off + CR0",
+        {"Hard QCD off CR0",
          {{path(cms, "QCD_Bin-PT-15to7000_Par-PT-flat2022_Par-JpsiMuMu_pythia8-"
                      "RunIIISummer24_Private.root"),
            "CmsReco"},
           {path(cms, "QCD_Bin-PT-15to7000_Par-PT-flat2022_Par-JpsiMuMu_pythia8-"
                      "RunIIISummer24_ext1_Private.root"),
            "CmsReco"}}},
-        {"Hard QCD, onia on + CR1",
+        {"Hard QCD on CR0",
+         {{path(cms, "QCD_Bin-PT-15to7000_Par-PT-flat2022_Par-JpsiMuMu-Par-"
+                     "OniaOn-CR0_pythia8311-RunIIISummer24_Private.root"),
+           "CmsReco"},
+          {path(cms, "QCD_Bin-PT-15to7000_Par-PT-flat2022_Par-JpsiMuMu-Par-"
+                     "OniaOn-CR0_pythia8311-RunIIISummer24_ext1_Private.root"),
+           "CmsReco"}}},
+        {"Hard QCD on CR1",
          {{path(cms, "QCD_Bin-PT-15to7000_Par-PT-flat2022_Par-JpsiMuMu-Par-"
                      "OniaOn-CR1_pythia8311-RunIIISummer24_Private.root"),
            "CmsReco"},
@@ -945,15 +1142,15 @@ int main(int argc, char **argv) {
                      "RunIIISummer24.root"),
            "CmsReco"}}}};
       drawFamily(cmsSamples, "cms_reco_samples", "CMS reco all jets",
-                 options.outputDirectory, options.drawPositiveHalf);
+                 options.outputDirectory, options.drawPositiveHalf, false, true);
       drawObservableFamily(cmsSamples, "z_pt", "cms_reco_z_samples",
                            "CMS reco J/#psi-in-jet z",
                            "z = p_{T}(J/#psi)/p_{T}(jet)",
-                           options.outputDirectory);
+                           options.outputDirectory, true);
       drawObservableFamily(cmsSamples, "z_h", "cms_reco_zh_samples",
                            "CMS reco J/#psi-in-jet z_{h}",
                            "z_{h} = p^{+}_{J/#psi}/p^{+}_{jet}",
-                           options.outputDirectory);
+                           options.outputDirectory, true);
     }
 
     if (options.drawPrivate) {
@@ -985,7 +1182,11 @@ int main(int argc, char **argv) {
         privateSamples,
         {"Off CR0", "Off CR1", "On CR0", "On CR1"},
         options.outputDirectory);
-    drawCharmoniumFractionFamily(
+    drawOctetFractionFamily(
+        privateSamples,
+        {"Off CR0", "Off CR1", "On CR0", "On CR1"},
+        options.outputDirectory);
+    drawNonBCharmoniumFractionFamily(
         privateSamples,
         {"Off CR0", "Off CR1", "On CR0", "On CR1"},
         options.outputDirectory);
@@ -994,48 +1195,78 @@ int main(int argc, char **argv) {
         {"Off CR0", "Off CR1", "On CR0", "On CR1"},
         options.outputDirectory);
 
-    drawFamily(privateCategorySamples(oniaOff8311),
-               "private_oniaoff_cr0_categories",
-               "Private OniaOff CR0 categories, all jets",
-               options.outputDirectory, options.drawPositiveHalf, true);
-    drawFamily(privateCategorySamples(oniaOffCr1_8311),
-               "private_oniaoff_cr1_categories",
-               "Private OniaOff CR1 categories, all jets",
-               options.outputDirectory, options.drawPositiveHalf, true);
-    drawFamily(privateCategorySamples(oniaOnCr0_8311),
-               "private_oniaon_cr0_categories",
-               "Private OniaOn CR0 categories, all jets",
-               options.outputDirectory, options.drawPositiveHalf, true);
-    drawFamily(privateCategorySamples(oniaOn8311),
-               "private_oniaon_cr1_categories",
-               "Private OniaOn CR1 categories, all jets",
-               options.outputDirectory, options.drawPositiveHalf, true);
+    const std::vector<std::string> privateKeys = {
+        "oniaoff_cr0", "oniaoff_cr1", "oniaon_cr0", "oniaon_cr1"};
+    const std::string zPtAxis = "z = p_{T}(J/#psi)/p_{T}(jet)";
+    const std::string zHAxis = "z_{h} = p^{+}_{J/#psi}/p^{+}_{jet}";
+    const std::vector<std::vector<std::string>> categoryKeysBySample = {
+        {"b_hadron", "charmonium_from_b"},
+        {"b_hadron", "charmonium_from_b", "quark"},
+        {}, {}};
+    for (std::size_t index = 0; index < privateSamples.size(); ++index) {
+      const auto categorySamples = privateCategorySamples(
+          privateSamples[index].sources.front().file,
+          categoryKeysBySample.at(index));
+      const std::string prefix = "private_" + privateKeys[index];
+      const std::string description = privateSamples[index].label;
+      drawFamily(categorySamples, prefix + "_categories",
+                 description + " categories", options.outputDirectory,
+                 options.drawPositiveHalf, true);
+      drawCategoryZFamily(categorySamples, "z_pt", prefix + "_z_categories",
+                          description + " source z", zPtAxis,
+                          options.outputDirectory);
+      drawCategoryZFamily(categorySamples, "z_h", prefix + "_zh_categories",
+                          description + " source z_{h}", zHAxis,
+                          options.outputDirectory);
 
-    drawFamily(privateSamplesForCategory(privateSamples, {"PrivateGen_cat1"}),
-               "private_b_hadron_samples",
-               "Private b-hadron category across samples, all jets",
-               options.outputDirectory, options.drawPositiveHalf, true);
-    drawFamily(privateSamplesForCategory(privateSamples,
-                                         charmoniumComponentDirectories()),
-               "private_charmonium_feeddown_samples",
-               "Private charmonium feed-down category across samples, all "
-               "jets",
-               options.outputDirectory, options.drawPositiveHalf, true);
-    drawFamily(privateSamplesForCategory(privateSamples, {"PrivateGen_cat3"}),
-               "private_gluon_proton_samples",
-               "Private gluon/proton category across samples, all jets",
-               options.outputDirectory, options.drawPositiveHalf, true);
-    drawFamily(privateSamplesForCategory(privateSamples, {"PrivateGen_cat4"}),
-               "private_quark_samples",
-               "Private quark category across samples, all jets",
-               options.outputDirectory, options.drawPositiveHalf, true);
-    drawFamily(privateSamplesForCategory(
-                   privateSamples,
-                   {"PrivateGen_cat5", "PrivateGen_cat6", "PrivateGen_cat7"}),
-               "private_octet_samples",
-               "Private octet (^{3}S_{1}^{[8]}+^{1}S_{0}^{[8]}+^{3}P_{J}^{[8]}) "
-               "across samples, all jets",
-               options.outputDirectory, options.drawPositiveHalf, true);
+      if (index >= 2) {
+        const auto nonBCharmonium = privateNonBCharmoniumSamples(
+            privateSamples[index].sources.front().file);
+        drawFamily(nonBCharmonium, prefix + "_non_b_charmonium",
+                   description + " non-B charmonium", options.outputDirectory,
+                   options.drawPositiveHalf, true);
+        drawCategoryZFamily(nonBCharmonium, "z_pt",
+                            prefix + "_non_b_charmonium_z",
+                            description + " non-B charmonium z", zPtAxis,
+                            options.outputDirectory);
+        drawCategoryZFamily(nonBCharmonium, "z_h",
+                            prefix + "_non_b_charmonium_zh",
+                            description + " non-B charmonium z_{h}", zHAxis,
+                            options.outputDirectory);
+      }
+    }
+
+    for (const auto &category : privateDetailedCategories()) {
+      const auto selectedSamples = privateSamplesWithCategory(
+          privateSamples, categoryKeysBySample, category.key);
+      const auto acrossSamples =
+          privateSamplesForCategory(selectedSamples, category.directories);
+      const std::string prefix = "private_" + category.key;
+      drawFamily(acrossSamples, prefix + "_samples", category.label,
+                 options.outputDirectory, options.drawPositiveHalf, true);
+      drawCategoryZFamily(acrossSamples, "z_pt", prefix + "_z_samples",
+                          category.label + " z", zPtAxis,
+                          options.outputDirectory);
+      drawCategoryZFamily(acrossSamples, "z_h", prefix + "_zh_samples",
+                          category.label + " z_{h}", zHAxis,
+                          options.outputDirectory);
+    }
+
+    const auto selectedNonBSamples = privateSamplesWithCategory(
+        privateSamples, categoryKeysBySample, "non_b_charmonium");
+    const auto nonBAcrossSamples = privateSamplesForCategory(
+        selectedNonBSamples, genuineCharmoniumDirectories());
+    drawFamily(nonBAcrossSamples, "private_charmonium_non_b_samples",
+               "non-B charmonium", options.outputDirectory,
+               options.drawPositiveHalf, true);
+    drawCategoryZFamily(nonBAcrossSamples, "z_pt",
+                        "private_charmonium_non_b_z_samples",
+                        "non-B charmonium z", zPtAxis,
+                        options.outputDirectory);
+    drawCategoryZFamily(nonBAcrossSamples, "z_h",
+                        "private_charmonium_non_b_zh_samples",
+                        "non-B charmonium z_{h}", zHAxis,
+                        options.outputDirectory);
     }
 
     return 0;

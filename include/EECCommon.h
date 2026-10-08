@@ -12,6 +12,7 @@
 #include <glob.h>
 #include <map>
 #include <memory>
+#include <ostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -100,6 +101,32 @@ inline void scaleConstituents(Jet &jet, double scale) {
     particle.p4 *= scale;
 }
 
+inline bool passesDijetKinematics(double pt1, double eta1, double phi1,
+                                   double pt2, double eta2, double phi2,
+                                   const Settings &settings) {
+  if (pt1 < std::max(30.0, settings.jetPtMin) ||
+      pt2 < std::max(30.0, settings.jetPtMin) ||
+      std::abs(eta1) > 2.1 || std::abs(eta2) > 2.1)
+    return false;
+  const double deltaPhi = std::atan2(std::sin(phi1 - phi2),
+                                     std::cos(phi1 - phi2));
+  if (std::abs(deltaPhi) <= 2.0)
+    return false;
+  const double sumPt = pt1 + pt2;
+  return sumPt > 0.0 && std::abs(pt1 - pt2) / sumPt < 0.3;
+}
+
+inline bool passesDijetSelection(const std::vector<Jet> &jets,
+                                 const Settings &settings) {
+  if (jets.size() < 2)
+    return false;
+  const auto &leading = jets[0].p4;
+  const auto &subleading = jets[1].p4;
+  return passesDijetKinematics(
+      leading.Pt(), leading.Eta(), leading.Phi(), subleading.Pt(),
+      subleading.Eta(), subleading.Phi(), settings);
+}
+
 inline int findJpsiJet(const Candidate &candidate, const std::vector<Jet> &jets,
                        const Settings &settings) {
   for (std::size_t i = 0; i < jets.size(); ++i) {
@@ -139,15 +166,14 @@ inline double longitudinalMomentumFraction(const TLorentzVector &particle,
 }
 
 inline const std::vector<double> &jpsiPtBinEdges() {
-  static const std::vector<double> edges = {0,  2,  4,  6,  8,   12,
-                                            16, 20, 30, 50, 100, 200};
+  static const std::vector<double> edges = {0,  12, 16, 20, 30,
+                                            50, 100, 200};
   return edges;
 }
 
 inline const std::vector<std::string> &jpsiPtBinSuffixes() {
   static const std::vector<std::string> suffixes = {
-      "_jpsipt_0_2",   "_jpsipt_2_4",    "_jpsipt_4_6",     "_jpsipt_6_8",
-      "_jpsipt_8_12",  "_jpsipt_12_16",  "_jpsipt_16_20",   "_jpsipt_20_30",
+      "_jpsipt_0_12", "_jpsipt_12_16",  "_jpsipt_16_20",   "_jpsipt_20_30",
       "_jpsipt_30_50", "_jpsipt_50_100", "_jpsipt_100_200", "_jpsipt_200_Inf"};
   return suffixes;
 }
@@ -230,7 +256,7 @@ public:
     cutflow_ = make("cutflow", "cutflow", 6, 0.5, 6.5);
     const char *cutLabels[] = {
         "input",         "candidate", "candidate kinematics",
-        "selected jets", "J/psi jet", "EEC filled"};
+        "dijet", "J/psi jet", "EEC filled"};
     for (int i = 0; i < 6; ++i)
       cutflow_->GetXaxis()->SetBinLabel(i + 1, cutLabels[i]);
 
@@ -247,6 +273,17 @@ public:
                60, 0.0, 1.2);
     nSelectedJets_ =
         make("n_selected_jets", "selected jet multiplicity", 20, -0.5, 19.5);
+    jpsiJetRank_ = make("jpsi_jet_rank",
+                        "J/#psi jet rank;jet rank;weighted events", 3, 0.5,
+                        3.5);
+    jpsiJetRankUnweighted_ =
+        make("jpsi_jet_rank_unweighted",
+             "J/#psi jet rank;jet rank;events", 3, 0.5, 3.5);
+    for (TH1D *histogram : {jpsiJetRank_, jpsiJetRankUnweighted_}) {
+      histogram->GetXaxis()->SetBinLabel(1, "leading");
+      histogram->GetXaxis()->SetBinLabel(2, "subleading");
+      histogram->GetXaxis()->SetBinLabel(3, "other");
+    }
     constituentScale_ =
         make("constituent_scale", "constituent energy scale", 200, 0.0, 2.0);
 
@@ -343,6 +380,27 @@ public:
     }
   }
 
+  void fillJpsiJetRank(int index, double weight) {
+    const int category = std::min(index + 1, 3);
+    jpsiJetRank_->Fill(category, weight);
+    jpsiJetRankUnweighted_->Fill(category);
+  }
+
+  void printJpsiJetFractions(std::ostream &output) const {
+    const double total = jpsiJetRankUnweighted_->Integral();
+    output << label_ << " J/psi jet rank (accepted dijet events): leading="
+           << jpsiJetRankUnweighted_->GetBinContent(1)
+           << ", subleading=" << jpsiJetRankUnweighted_->GetBinContent(2)
+           << ", other=" << jpsiJetRankUnweighted_->GetBinContent(3)
+           << "; fractions=";
+    for (int bin = 1; bin <= 3; ++bin)
+      output << (bin == 1 ? "" : ", ")
+             << (total > 0.0
+                     ? jpsiJetRankUnweighted_->GetBinContent(bin) / total
+                     : 0.0);
+    output << '\n';
+  }
+
   bool fillParticle(const std::string &scope, const Particle &particle,
                     const Candidate &candidate, double eventWeight) {
     if (particle.isSelectedJpsiDaughter || candidate.jpsi.M() <= 0.0 ||
@@ -431,6 +489,8 @@ private:
   TH1D *zPt_ = nullptr;
   TH1D *zH_ = nullptr;
   TH1D *nSelectedJets_ = nullptr;
+  TH1D *jpsiJetRank_ = nullptr;
+  TH1D *jpsiJetRankUnweighted_ = nullptr;
   TH1D *constituentScale_ = nullptr;
 };
 
@@ -440,7 +500,7 @@ inline bool analyzeEvent(const Candidate &candidate,
   if (!candidatePassesKinematics(candidate, settings))
     return false;
   histograms.fillCut(3, weight);
-  if (jets.empty())
+  if (!passesDijetSelection(jets, settings))
     return false;
   histograms.fillCut(4, weight);
 
@@ -452,8 +512,8 @@ inline bool analyzeEvent(const Candidate &candidate,
   histograms.fillJpsiJet(candidate, jets.at(jpsiJetIndex), weight);
 
   bool filled = false;
-  for (const auto &jet : jets)
-    for (const auto &particle : jet.constituents)
+  for (std::size_t index = 0; index < 2; ++index)
+    for (const auto &particle : jets[index].constituents)
       filled =
           histograms.fillParticle("alljets", particle, candidate, weight) ||
           filled;
@@ -462,8 +522,10 @@ inline bool analyzeEvent(const Candidate &candidate,
     filled = histograms.fillParticle("jpsijet", particle, candidate, weight) ||
              filled;
 
-  if (filled)
+  if (filled) {
     histograms.fillCut(6, weight);
+    histograms.fillJpsiJetRank(jpsiJetIndex, weight);
+  }
   return filled;
 }
 

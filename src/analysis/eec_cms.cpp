@@ -1,5 +1,5 @@
 #include "EECCommon.h"
-#include "include/MCJetsAndDaughters.h"
+#include "MCJetsAndDaughters.h"
 
 #include <TChain.h>
 #include <TFile.h>
@@ -27,7 +27,7 @@ struct Options {
   int chunkIndex = 0;
   bool applyCmsFilters = true;
   bool applyHotZone = true;
-  bool requirePrompt = false;
+  bool requirePrompt = true;
   Settings settings;
 };
 
@@ -269,17 +269,32 @@ std::vector<Jet> buildJets(const std::vector<double> &jetPt,
 
 void fillInclusiveJetDenominator(const std::vector<double> &jetPt,
                                  const std::vector<double> &jetEta,
+                                 const std::vector<double> &jetPhi,
                                  const std::vector<bool> *passHotZone,
                                  const Settings &settings,
                                  Histograms &histograms, double eventWeight) {
+  std::vector<std::size_t> selected;
   for (std::size_t i = 0; i < jetPt.size(); ++i) {
     if (jetPt.at(i) < settings.jetPtMin ||
         std::abs(jetEta.at(i)) > settings.jetAbsEtaMax)
       continue;
     if (passHotZone && !passHotZone->at(i))
       continue;
-    histograms.fillInclusiveJet(jetPt.at(i), eventWeight);
+    selected.push_back(i);
   }
+  std::sort(selected.begin(), selected.end(),
+            [&](std::size_t left, std::size_t right) {
+              return jetPt[left] > jetPt[right];
+            });
+  if (selected.size() < 2)
+    return;
+  const std::size_t first = selected[0], second = selected[1];
+  if (!unified_eec::passesDijetKinematics(
+          jetPt[first], jetEta[first], jetPhi[first], jetPt[second],
+          jetEta[second], jetPhi[second], settings))
+    return;
+  for (std::size_t index : selected)
+    histograms.fillInclusiveJet(jetPt[index], eventWeight);
 }
 
 bool passesCmsFilters(const MCJetsAndDaughters &event) {
@@ -349,13 +364,13 @@ int main(int argc, char **argv) {
         // the denominator. Fill it before applying any J/psi-candidate cuts.
         if (genHistograms)
           fillInclusiveJetDenominator(*event.GenJetPt, *event.GenJetEta,
-                                      nullptr, options.settings,
+                                      *event.GenJetPhi, nullptr, options.settings,
                                       *genHistograms, weight);
         if (recoHistograms) {
           const std::vector<bool> *hotZone =
               options.applyHotZone ? event.RecoJetPassHotZone : nullptr;
           fillInclusiveJetDenominator(*event.RecoJetPt, *event.RecoJetEta,
-                                      hotZone, options.settings,
+                                      *event.RecoJetPhi, hotZone, options.settings,
                                       *recoHistograms, weight);
         }
 
@@ -412,6 +427,10 @@ int main(int argc, char **argv) {
       genHistograms->write(*output);
     if (recoHistograms)
       recoHistograms->write(*output);
+    if (genHistograms)
+      genHistograms->printJpsiJetFractions(std::cout);
+    if (recoHistograms)
+      recoHistograms->printJpsiJetFractions(std::cout);
     output->Close();
     std::cout << "Processed " << processed << ", accepted Gen " << acceptedGen
               << ", accepted Reco " << acceptedReco << ", wrote " << outputName

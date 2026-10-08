@@ -1,5 +1,39 @@
-logs/*
+# Compiled programs and runtime outputs
 /bin/
-generated/
+/build/
+/generated/
+logs/
 plots_*/
-archive/
+*.root
+*.o
+*.so
+*.a
+*.pcm
+*.log
+*.out
+*.err
+
+# Local archives and conversation notes
+/archive/
+/chat/
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local agent state and credential caches
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+shuangyu.cc
+.agents/
+.codex/
+.aws/
+
+# Editor and operating-system temporary files
+*.swp
+*.swo
+*~
+.DS_Store

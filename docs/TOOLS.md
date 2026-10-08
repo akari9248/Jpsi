@@ -1,0 +1,98 @@
+# Functional file guide
+
+Run the examples from the repository root. The shell scripts resolve the
+repository location independently of the caller's working directory.
+
+## Build
+
+```bash
+./compile.sh --target all
+```
+
+The build initializes the requested CMSSW release and puts executables in
+`bin/`. Use `--cmssw /path/to/CMSSW` to select a release or `--output-dir DIR`
+to choose another binary directory. Existing binaries are local artifacts.
+
+| Target | Source files | Executables |
+| --- | --- | --- |
+| `cms` | `src/analysis/eec_cms.cpp`, fragmentation postprocessor | `eec_cms`, `make_fragmentation_function` |
+| `private` | `src/analysis/eec_private.cpp`, fragmentation postprocessor | `eec_private`, `make_fragmentation_function` |
+| `generate` | `src/generation/pythia_private.cpp` | `pythia_private` |
+| `plot` | Three files in `src/plotting/` | `plot_eec`, `plot_sideband_subtraction`, `plot_jpsi_jet_pt` |
+| `fragmentation` | `src/tools/make_fragmentation_function.cpp` | `make_fragmentation_function` |
+| `tools` | Two files in `src/tools/` | `make_fragmentation_function`, `countnum` |
+| `all` | All active C++ sources | All of the above |
+
+`include/EECCommon.h` contains the shared selection, kinematics, and histogram
+schema. `include/MotherCategory.h` defines the truth-origin categories. Other
+headers in `include/` provide ntuple readers and analysis/plotting helpers.
+
+## Workflow scripts
+
+| Implementation | Root entry point | Purpose |
+| --- | --- | --- |
+| `scripts/compile.sh` | `./compile.sh` | Compile selected targets once on the host |
+| `scripts/condor.sh` | `./condor.sh` | Compile and create HTCondor submit files under `generated/`; `--submit` submits them |
+| `scripts/run_job.sh` | `./run_job.sh` | Run a prebuilt generator or EEC adapter on a batch worker |
+| `scripts/merge.sh` | `./merge.sh` | Validate and merge ROOT chunks, then construct fragmentation functions |
+
+Condor jobs use `scripts/run_job.sh` and the repository's `bin/` directory.
+Existing submit files using the root worker entry point continue to work.
+`run_job.sh --source-dir DIR` expects a project root containing `bin/`.
+`merge.sh --cleanup` removes chunks only after all requested merges succeed.
+
+## Plotting and presentation
+
+| File | Purpose | Example |
+| --- | --- | --- |
+| `src/plotting/plot_eec.cpp` | CMS/private EEC, momentum-fraction, and origin comparisons | `./bin/plot_eec --output-dir plots_eec` |
+| `src/plotting/plot_sideband_subtraction.cpp` | Data sideband subtraction and signal/MC comparison | `./bin/plot_sideband_subtraction --output-dir plots_sideband_subtraction` |
+| `src/plotting/plot_jpsi_jet_pt.cpp` | Selected J/psi and matching-jet pT comparisons | `./bin/plot_jpsi_jet_pt --output-dir plots_jpsi_jet_pt` |
+| `scripts/plotting/montage_pt_pdfs.py` | Inclusive and pT-binned EEC/z PDF slides | `python3 scripts/plotting/montage_pt_pdfs.py --input-dir plots_eec` |
+| `scripts/plotting/montage_jpsi_jet_pt_pdfs.py` | Full-range and zoomed pT PDF slides | `python3 scripts/plotting/montage_jpsi_jet_pt_pdfs.py --input-dir plots_jpsi_jet_pt` |
+| `macros/compare.C` | Quick two-file ROOT shape and ratio comparison | See below |
+
+The montage scripts require `pdflatex`; the J/psi/jet-pT montage also uses
+`pdfunite` to combine pages. The scripts stay together because the pT montage
+imports the shared layout helpers from `montage_pt_pdfs.py`. The EEC montage
+default input directory matches `plot_eec`: `plots_eec_cms_private/`.
+
+```bash
+root -l -q 'macros/compare.C("private.root","PrivateGen","cms.root","CmsGen")'
+```
+
+The root `compare.C` compatibility entry point accepts the same arguments.
+Jet-rank fraction histograms are stored by the fragmentation postprocessor;
+`plot_jet_rank_fractions.py` is not present in this checkout.
+
+## Small utilities and configuration
+
+```bash
+./compile.sh --target tools
+./bin/countnum -i /path/to/cms/dataset -o counts -n 1 -e 0
+./bin/make_fragmentation_function FILE.root
+```
+
+`countnum` totals the CMS ntuple event counters. The fragmentation tool updates
+the specified ROOT file after merging; `merge.sh` calls it automatically.
+`config/hadd_skip_metadata.txt` documents the historical metadata skip list.
+The active merge command does not use it because the original ROOT environment
+did not support `hadd -L/-Ltype`.
+
+## Local and historical files
+
+- `archive/`: preserved legacy workflows, results, and local state; ignored.
+- `archive/local_state_20261008/`: state databases and Python cache files moved
+  out of the repository root during the directory cleanup.
+- `private/events_pp_jpsi.cc`: historical generator requiring external helper
+  sources and hard-coded paths; use the active generator for new jobs.
+- `pythia_generation/`: historical job scripts and reference plots, preserved
+  at their existing paths; the old scripts reference earlier CMSSW releases.
+- `xsection/`: cross-section reference table.
+- `chat/`: local conversation notes; ignored.
+- `shuangyu.cc` files: local Kerberos credential caches despite the `.cc`
+  extension. Keep them locally and exclude them from Git. Removing them from
+  current tracking does not remove copies already present in Git history.
+
+Do not put generated ROOT files, binaries, caches, or job logs alongside the
+active sources. The ignore rules cover these outputs and local agent state.

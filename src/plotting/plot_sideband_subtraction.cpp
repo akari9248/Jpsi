@@ -8,7 +8,6 @@
 #include <TPad.h>
 #include <TStyle.h>
 #include <TSystem.h>
-
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>

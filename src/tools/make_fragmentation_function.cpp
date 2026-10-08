@@ -78,6 +78,55 @@ int makeInDirectory(TDirectory &directory) {
   return made;
 }
 
+bool makeJpsiJetRankFractions(TDirectory &directory, bool weighted,
+                              const char *outputName) {
+  const char *inputName =
+      weighted ? "jpsi_jet_rank" : "jpsi_jet_rank_unweighted";
+  auto *counts = dynamic_cast<TH1D *>(directory.Get(inputName));
+  if (!counts)
+    return false;
+  // Older CMS files put "other" in overflow; newer files have a third bin.
+  if (counts->GetNbinsX() != 2 && counts->GetNbinsX() != 3)
+    throw std::runtime_error("unexpected J/psi jet rank binning");
+  const int lastBin = counts->GetNbinsX() + 1;
+  const double values[] = {
+      counts->GetBinContent(1), counts->GetBinContent(2),
+      counts->Integral(3, lastBin)};
+  const double variances[] = {
+      std::pow(counts->GetBinError(1), 2),
+      std::pow(counts->GetBinError(2), 2),
+      std::pow(counts->GetBinError(3), 2) +
+          (lastBin == 4 ? std::pow(counts->GetBinError(4), 2) : 0.0)};
+  const double total = values[0] + values[1] + values[2];
+  if (!std::isfinite(total) || total <= 0.0)
+    return false;
+  const double totalVariance =
+      variances[0] + variances[1] + variances[2];
+
+  TH1D fractions(outputName,
+                 "J/#psi jet rank;jet rank;fraction of accepted events",
+                 3, 0.5, 3.5);
+  fractions.SetDirectory(nullptr);
+  const char *labels[] = {"leading", "subleading", "other"};
+  for (int bin = 1; bin <= 3; ++bin) {
+    const double value = values[bin - 1];
+    const double variance = variances[bin - 1];
+    fractions.GetXaxis()->SetBinLabel(bin, labels[bin - 1]);
+    fractions.SetBinContent(bin, value / total);
+    fractions.SetBinError(
+        bin, std::sqrt((std::pow(total - value, 2) * variance +
+                        std::pow(value, 2) * (totalVariance - variance)) /
+                       std::pow(total, 4)));
+  }
+  directory.cd();
+  fractions.Write(outputName, TObject::kOverwrite);
+  std::cout << directory.GetName() << " " << outputName << ": leading="
+            << fractions.GetBinContent(1)
+            << ", subleading=" << fractions.GetBinContent(2)
+            << ", other=" << fractions.GetBinContent(3) << '\n';
+  return true;
+}
+
 double safeRatio(double numerator, double denominator) {
   return denominator > 0.0 ? numerator / denominator : 0.0;
 }
@@ -152,8 +201,18 @@ int main(int argc, char **argv) {
       if (!keyClass || !keyClass->InheritsFrom(TDirectory::Class()))
         continue;
       TDirectory *directory = file->GetDirectory(key->GetName());
-      if (directory)
+      if (directory) {
         made += makeInDirectory(*directory);
+        const std::string name = directory->GetName();
+        const bool isCms = name == "CmsReco" || name == "CmsGen";
+        makeJpsiJetRankFractions(*directory, true,
+                                 "jpsi_jet_rank_fraction_weighted");
+        makeJpsiJetRankFractions(*directory, false,
+                                 "jpsi_jet_rank_fraction_unweighted");
+        // Keep the original name for existing consumers.
+        makeJpsiJetRankFractions(*directory, isCms,
+                                 "jpsi_jet_rank_fraction");
+      }
     }
     makePrivateFeeddownTagMetrics(*file);
     file->Close();
