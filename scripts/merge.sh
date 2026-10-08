@@ -4,11 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 FRAGMENTATION_TOOL="${PROJECT_DIR}/bin/make_fragmentation_function"
-# This hadd build does not support -L / -Ltype (skip list), so
-# hadd_skip_metadata.txt is no longer used. If you later move to a ROOT
-# version that supports it, restore:
-#   hadd -f -L "${HADD_SKIP_LIST}" -Ltype SkipListed ...
-# HADD_SKIP_LIST="${PROJECT_DIR}/config/hadd_skip_metadata.txt"
 
 MODE=""
 OUTPUT_DIR=""

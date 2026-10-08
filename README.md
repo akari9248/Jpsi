@@ -13,20 +13,20 @@ for each executable, build target, and script.
 | `scripts/` | Build, Condor preparation, batch worker, and merge scripts |
 | `scripts/plotting/` | PDF montage tools |
 | `macros/` | Interactive ROOT comparison macro |
-| `config/` | Supplemental configuration files |
 | `bin/`, `generated/`, `plots_*/` | Local build and runtime outputs (ignored by Git) |
 
-The root-level `compile.sh`, `condor.sh`, `merge.sh`, `run_job.sh`, and
-`compare.C` forward to the organized implementations, so existing workflow
-commands continue to work. All C++ targets are built with `include/` on the
+The root-level `compile.sh`, `condor.sh`, `merge.sh`, and `run_job.sh` forward
+to the organized implementations, so existing shell workflow commands continue
+to work. Run ROOT comparisons through `macros/compare.C`. All C++ targets are built with `include/` on the
 header search path; `include/EECCommon.h` remains the shared implementation of
 jet acceptance, J/psi-jet association, helicity-frame boost, decay-muon removal,
 energy weighting, and histogram filling.
 
 Previous workflows and local results are preserved under `archive/`.
-`private/`, `pythia_generation/`, and `xsection/` contain historical generation
-code, job files/results, and cross-section references; they are not part of
-the active build. Local notes remain in `chat/`.
+`pythia_generation/` retains historical ROOT/PDF results; `xsection/` contains
+the cross-section reference table. Obsolete generation programs, job scripts,
+logs, binary copies, and unused headers have been removed. Local notes remain
+in `chat/`.
 
 The comparable histograms have identical names inside the `CmsGen`, `CmsReco`,
 and `PrivateGen` ROOT directories. The main ones are
@@ -171,7 +171,7 @@ muon pT > 2/2 GeV.
 For a quick shape-and-ratio comparison:
 
 ```bash
-root -l -q 'compare.C("private.root","PrivateGen","cms.root","CmsGen")'
+root -l -q 'macros/compare.C("private.root","PrivateGen","cms.root","CmsGen")'
 ```
 
 For the full CMS-sample, private-sample, and OniaOn-origin comparisons,

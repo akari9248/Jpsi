@@ -23,9 +23,15 @@ to choose another binary directory. Existing binaries are local artifacts.
 | `tools` | Two files in `src/tools/` | `make_fragmentation_function`, `countnum` |
 | `all` | All active C++ sources | All of the above |
 
-`include/EECCommon.h` contains the shared selection, kinematics, and histogram
-schema. `include/MotherCategory.h` defines the truth-origin categories. Other
-headers in `include/` provide ntuple readers and analysis/plotting helpers.
+Only the headers used by the active programs remain in `include/`:
+
+| Header | Purpose |
+| --- | --- |
+| `EECCommon.h` | Shared selection, kinematics, and histogram schema |
+| `MotherCategory.h` | Truth-origin categories |
+| `MCJetsAndDaughters.h` | CMS ntuple reader |
+| `CharmoniumInfoPrivate.h` | Private-Pythia ntuple reader |
+| `ProgressBar.h` | Generator progress display |
 
 ## Workflow scripts
 
@@ -61,11 +67,10 @@ default input directory matches `plot_eec`: `plots_eec_cms_private/`.
 root -l -q 'macros/compare.C("private.root","PrivateGen","cms.root","CmsGen")'
 ```
 
-The root `compare.C` compatibility entry point accepts the same arguments.
 Jet-rank fraction histograms are stored by the fragmentation postprocessor;
 `plot_jet_rank_fractions.py` is not present in this checkout.
 
-## Small utilities and configuration
+## Small utilities
 
 ```bash
 ./compile.sh --target tools
@@ -75,19 +80,14 @@ Jet-rank fraction histograms are stored by the fragmentation postprocessor;
 
 `countnum` totals the CMS ntuple event counters. The fragmentation tool updates
 the specified ROOT file after merging; `merge.sh` calls it automatically.
-`config/hadd_skip_metadata.txt` documents the historical metadata skip list.
-The active merge command does not use it because the original ROOT environment
-did not support `hadd -L/-Ltype`.
 
 ## Local and historical files
 
 - `archive/`: preserved legacy workflows, results, and local state; ignored.
-- `archive/local_state_20261008/`: state databases and Python cache files moved
-  out of the repository root during the directory cleanup.
-- `private/events_pp_jpsi.cc`: historical generator requiring external helper
-  sources and hard-coded paths; use the active generator for new jobs.
-- `pythia_generation/`: historical job scripts and reference plots, preserved
-  at their existing paths; the old scripts reference earlier CMSSW releases.
+- `pythia_generation/`: historical ROOT/PDF results preserved at their original
+  paths. Obsolete job scripts, logs, binary copies, and duplicate headers were
+  removed; use `src/generation/pythia_private.cpp` and `scripts/condor.sh` for
+  new generation jobs.
 - `xsection/`: cross-section reference table.
 - `chat/`: local conversation notes; ignored.
 - `shuangyu.cc` files: local Kerberos credential caches despite the `.cc`
